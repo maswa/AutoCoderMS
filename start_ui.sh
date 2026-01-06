@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")"
 # Autonomous Coder UI Launcher for Unix/Linux/macOS
 # This script launches the web UI for the autonomous coding agent.
 
@@ -7,9 +8,6 @@ echo "===================================="
 echo "  Autonomous Coder UI"
 echo "===================================="
 echo ""
-
-# Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check if Python is available
 if ! command -v python3 &> /dev/null; then
@@ -24,4 +22,4 @@ else
 fi
 
 # Run the Python launcher
-$PYTHON_CMD "$SCRIPT_DIR/start_ui.py" "$@"
+$PYTHON_CMD start_ui.py "$@"

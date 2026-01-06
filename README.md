@@ -1,12 +1,14 @@
 # Autonomous Coding Agent
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/leonvanzyl)
+
 A long-running autonomous coding agent powered by the Claude Agent SDK. This tool can build complete applications over multiple sessions using a two-agent pattern (initializer + coding agent). Includes a React-based UI for monitoring progress in real-time.
 
-## Video Walkthrough
+## Video Tutorial
 
-[![Watch the video](https://img.youtube.com/vi/YW09hhnVqNM/maxresdefault.jpg)](https://youtu.be/YW09hhnVqNM)
+[![Watch the tutorial](https://img.youtube.com/vi/lGWFlpffWk4/hqdefault.jpg)](https://youtu.be/lGWFlpffWk4)
 
-> **[Watch the setup and usage guide →](https://youtu.be/YW09hhnVqNM)**
+> **[Watch the setup and usage guide →](https://youtu.be/lGWFlpffWk4)**
 
 ---
 
@@ -320,4 +322,5 @@ The agent tried to run a command not in the allowlist. This is the security syst
 
 ## License
 
-Internal Anthropic use.
+This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE.md](LICENSE.md) file for details.
+Copyright (C) 2026 Leon van Zyl (https://leonvanzyl.com)

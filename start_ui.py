@@ -28,14 +28,8 @@ import time
 import webbrowser
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 
 ROOT = Path(__file__).parent.absolute()
-
-# Load environment variables from .env file
-# This ensures env vars like PROGRESS_N8N_WEBHOOK_URL are available to subprocesses
-load_dotenv(ROOT / ".env")
 VENV_DIR = ROOT / "venv"
 UI_DIR = ROOT / "ui"
 
@@ -223,6 +217,13 @@ def main() -> None:
     if not install_python_deps():
         print("ERROR: Failed to install Python dependencies")
         sys.exit(1)
+
+    # Load environment variables now that dotenv is installed
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+    except ImportError:
+        pass  # dotenv is optional for basic functionality
 
     # Step 3: Check Node.js
     print_step(3, total_steps, "Checking Node.js")
