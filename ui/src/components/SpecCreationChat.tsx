@@ -43,7 +43,7 @@ export function SpecCreationChat({
   const [yoloEnabled, setYoloEnabled] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<ImageAttachment[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -98,6 +98,10 @@ export function SpecCreationChat({
     sendMessage(trimmed, pendingAttachments.length > 0 ? pendingAttachments : undefined)
     setInput('')
     setPendingAttachments([]) // Clear attachments after sending
+    // Reset textarea height after sending
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -355,11 +359,15 @@ export function SpecCreationChat({
               <Paperclip size={18} />
             </button>
 
-            <input
+            <textarea
               ref={inputRef}
-              type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                // Auto-resize the textarea
+                e.target.style.height = 'auto'
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`
+              }}
               onKeyDown={handleKeyDown}
               placeholder={
                 currentQuestions
@@ -368,8 +376,9 @@ export function SpecCreationChat({
                     ? 'Add a message with your image(s)...'
                     : 'Type your response... (or /exit to go to project)'
               }
-              className="neo-input flex-1"
+              className="neo-input flex-1 resize-none min-h-[46px] max-h-[200px] overflow-y-auto"
               disabled={(isLoading && !currentQuestions) || connectionStatus !== 'connected'}
+              rows={1}
             />
             <button
               onClick={handleSendMessage}
@@ -386,7 +395,7 @@ export function SpecCreationChat({
 
           {/* Help text */}
           <p className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
-            Press Enter to send. Drag & drop or click <Paperclip size={12} className="inline" /> to attach images (JPEG/PNG, max 5MB).
+            Press Enter to send, Shift+Enter for new line. Drag & drop or click <Paperclip size={12} className="inline" /> to attach images (JPEG/PNG, max 5MB).
           </p>
         </div>
       )}

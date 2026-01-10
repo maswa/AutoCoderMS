@@ -6,9 +6,25 @@ Main entry point for the Autonomous Coding UI server.
 Provides REST API, WebSocket, and static file serving.
 """
 
+import os
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if present
+load_dotenv()
+
+
+def get_cli_command() -> str:
+    """
+    Get the CLI command to use for the agent.
+
+    Reads from CLI_COMMAND environment variable, defaults to 'claude'.
+    This allows users to use alternative CLIs like 'glm'.
+    """
+    return os.getenv("CLI_COMMAND", "claude")
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -124,11 +140,12 @@ async def health_check():
 @app.get("/api/setup/status", response_model=SetupStatus)
 async def setup_status():
     """Check system setup status."""
-    # Check for Claude CLI
-    claude_cli = shutil.which("claude") is not None
+    # Check for CLI (configurable via CLI_COMMAND environment variable)
+    cli_command = get_cli_command()
+    claude_cli = shutil.which(cli_command) is not None
 
-    # Check for Claude CLI configuration directory
-    # Note: Claude CLI no longer stores credentials in ~/.claude/.credentials.json
+    # Check for CLI configuration directory
+    # Note: CLI no longer stores credentials in ~/.claude/.credentials.json
     # The existence of ~/.claude indicates the CLI has been configured
     claude_dir = Path.home() / ".claude"
     credentials = claude_dir.exists() and claude_dir.is_dir()

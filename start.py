@@ -13,7 +13,24 @@ import subprocess
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from auth import is_auth_error, print_auth_error_help
+
+# Load environment variables from .env file if present
+load_dotenv()
+
+
+def get_cli_command() -> str:
+    """
+    Get the CLI command to use for the agent.
+
+    Reads from CLI_COMMAND environment variable, defaults to 'claude'.
+    This allows users to use alternative CLIs like 'glm'.
+    """
+    return os.getenv("CLI_COMMAND", "claude")
+
+
 from prompts import (
     get_project_prompts_dir,
     has_project_prompts,
@@ -217,11 +234,12 @@ def run_spec_creation(project_dir: Path) -> bool:
     print("Exit Claude Code (Ctrl+C or /exit) when finished.\n")
 
     try:
-        # Launch Claude Code with /create-spec command
+        # Launch CLI with /create-spec command
         # Project path included in command string so it populates $ARGUMENTS
         # Capture stderr to detect auth errors while letting stdout flow to terminal
+        cli_command = get_cli_command()
         result = subprocess.run(
-            ["claude", f"/create-spec {project_dir}"],
+            [cli_command, f"/create-spec {project_dir}"],
             check=False,  # Don't raise on non-zero exit
             cwd=str(Path(__file__).parent),  # Run from project root
             stderr=subprocess.PIPE,
@@ -249,13 +267,17 @@ def run_spec_creation(project_dir: Path) -> bool:
             print(f"Please ensure app_spec.txt exists in: {get_project_prompts_dir(project_dir)}")
             # If failed with non-zero exit and no spec, might be auth issue
             if result.returncode != 0:
-                print("\nIf you're having authentication issues, try running: claude login")
+                print(f"\nIf you're having authentication issues, try running: {cli_command} login")
             return False
 
     except FileNotFoundError:
-        print("\nError: 'claude' command not found.")
-        print("Make sure Claude Code CLI is installed:")
-        print("  npm install -g @anthropic-ai/claude-code")
+        cli_command = get_cli_command()
+        print(f"\nError: '{cli_command}' command not found.")
+        if cli_command == "claude":
+            print("Make sure Claude Code CLI is installed:")
+            print("  npm install -g @anthropic-ai/claude-code")
+        else:
+            print(f"Make sure the '{cli_command}' CLI is installed and in your PATH.")
         return False
     except KeyboardInterrupt:
         print("\n\nSpec creation cancelled.")
@@ -407,7 +429,8 @@ def run_agent(project_name: str, project_dir: Path) -> None:
                 print(f"\nAgent error:\n{stderr_output.strip()}")
                 # Still hint about auth if exit was unexpected
                 if "error" in stderr_output.lower() or "exception" in stderr_output.lower():
-                    print("\nIf this is an authentication issue, try running: claude login")
+                    cli_command = get_cli_command()
+                    print(f"\nIf this is an authentication issue, try running: {cli_command} login")
 
     except KeyboardInterrupt:
         print("\n\nAgent interrupted. Run again to resume.")

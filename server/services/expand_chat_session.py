@@ -9,6 +9,7 @@ Uses the expand-project.md skill to help users add features to existing projects
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import threading
@@ -18,8 +19,22 @@ from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
+
+# Load environment variables from .env file if present
+load_dotenv()
+
+
+def get_cli_command() -> str:
+    """
+    Get the CLI command to use for the agent.
+
+    Reads from CLI_COMMAND environment variable, defaults to 'claude'.
+    This allows users to use alternative CLIs like 'glm'.
+    """
+    return os.getenv("CLI_COMMAND", "claude")
 
 logger = logging.getLogger(__name__)
 
@@ -120,12 +135,14 @@ class ExpandChatSession:
         except UnicodeDecodeError:
             skill_content = skill_path.read_text(encoding="utf-8", errors="replace")
 
-        # Find and validate Claude CLI before creating temp files
-        system_cli = shutil.which("claude")
+        # Find and validate CLI before creating temp files
+        # CLI command is configurable via CLI_COMMAND environment variable
+        cli_command = get_cli_command()
+        system_cli = shutil.which(cli_command)
         if not system_cli:
             yield {
                 "type": "error",
-                "content": "Claude CLI not found. Please install Claude Code."
+                "content": f"CLI '{cli_command}' not found. Please install it or check your CLI_COMMAND setting."
             }
             return
 
