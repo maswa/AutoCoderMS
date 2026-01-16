@@ -64,7 +64,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 nosetests.xml
-./ui/playwright-report
+ui/playwright-report/
 
 # mypy
 .mypy_cache/
@@ -143,4 +143,4 @@ Pipfile.lock
 .tmp/
 .temp/
 tmpclaude-*-cwd
-./ui/test-results
+ui/test-results/

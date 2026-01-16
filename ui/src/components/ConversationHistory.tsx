@@ -76,7 +76,6 @@ export function ConversationHistory({
   }
 
   const handleSelectConversation = (conversationId: number) => {
-    console.log('[ConversationHistory] handleSelectConversation called with id:', conversationId)
     onSelectConversation(conversationId)
     onClose()
   }
@@ -129,11 +128,6 @@ export function ConversationHistory({
           <div className="max-h-[300px] overflow-auto">
             {conversations.map((conversation) => {
               const isCurrent = conversation.id === currentConversationId
-              console.log('[ConversationHistory] Rendering conversation:', {
-                id: conversation.id,
-                currentConversationId,
-                isCurrent
-              })
 
               return (
                 <div

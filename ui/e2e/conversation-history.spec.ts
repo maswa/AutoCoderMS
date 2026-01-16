@@ -33,7 +33,8 @@ test.describe('Assistant Panel UI', () => {
         return false
       }
       await projectItem.click()
-      await page.waitForTimeout(500)
+      // Wait for dropdown to close (project selected)
+      await expect(projectSelector).not.toBeVisible({ timeout: 5000 }).catch(() => {})
       return true
     }
     return false
@@ -321,7 +322,8 @@ test.describe('Conversation History Integration', () => {
       const hasProject = await projectItem.isVisible().catch(() => false)
       if (!hasProject) return false
       await projectItem.click()
-      await page.waitForTimeout(500)
+      // Wait for dropdown to close (project selected)
+      await expect(projectSelector).not.toBeVisible({ timeout: 5000 }).catch(() => {})
       return true
     }
     return false
@@ -360,7 +362,7 @@ test.describe('Conversation History Integration', () => {
     await expect(page.locator(`text=${message}`).first()).toBeVisible({ timeout: 5000 })
     await page.waitForSelector('text=Thinking...', { timeout: 10000 }).catch(() => {})
     await expect(inputArea).toBeEnabled({ timeout: 60000 })
-    await page.waitForTimeout(500)
+    // Wait for any streaming to complete (input enabled means response done)
   }
 
   // --------------------------------------------------------------------------
@@ -399,7 +401,6 @@ test.describe('Conversation History Integration', () => {
 
     await page.keyboard.press('a')
     await waitForPanelOpen(page)
-    await page.waitForTimeout(2000)
 
     // Verify our question is still visible (conversation resumed)
     await expect(page.locator('text=how much is 1+1').first()).toBeVisible({ timeout: 10000 })
@@ -413,7 +414,6 @@ test.describe('Conversation History Integration', () => {
     console.log('STEP 3: New chat')
     const newChatButton = page.locator('button[title="New conversation"]')
     await newChatButton.click()
-    await page.waitForTimeout(500)
 
     if (!await waitForAssistantReady(page)) {
       test.skip(true, 'Assistant API not available')
@@ -441,7 +441,7 @@ test.describe('Conversation History Integration', () => {
     // STEP 6: Switch to first conversation
     console.log('STEP 6: Switch conversation')
     await conversationItems.nth(1).click()
-    await page.waitForTimeout(2000)
+    // Wait for conversation to load by checking for the expected message
     await expect(page.locator('text=how much is 1+1').first()).toBeVisible({ timeout: 10000 })
     await expect(page.locator('text=how much is 2+2')).not.toBeVisible()
 
@@ -485,7 +485,9 @@ test.describe('Conversation History Integration', () => {
     const confirmButton = page.locator('button:has-text("Delete")').last()
     await expect(confirmButton).toBeVisible()
     await confirmButton.click()
-    await page.waitForTimeout(1000)
+
+    // Wait for confirmation dialog to close
+    await expect(confirmButton).not.toBeVisible({ timeout: 5000 })
 
     // Verify count decreased
     await historyButton.click()

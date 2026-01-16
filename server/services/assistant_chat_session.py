@@ -345,6 +345,8 @@ class AssistantChatSession:
             history = get_messages(self.project_dir, self.conversation_id)
             # Exclude the message we just added (last one)
             history = history[:-1] if history else []
+            # Cap history to last 35 messages to prevent context overload
+            history = history[-35:] if len(history) > 35 else history
             if history:
                 # Format history as context for Claude
                 history_lines = ["[Previous conversation history for context:]"]

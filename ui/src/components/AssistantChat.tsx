@@ -6,7 +6,7 @@
  * Supports conversation history with resume functionality.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Loader2, Wifi, WifiOff, Plus, History } from 'lucide-react'
 import { useAssistantChat } from '../hooks/useAssistantChat'
 import { ChatMessage as ChatMessageComponent } from './ChatMessage'
@@ -58,21 +58,18 @@ export function AssistantChat({
   })
 
   // Notify parent when a NEW conversation is created (not when switching to existing)
-  // This should only fire when conversationId was null/undefined and a new one was created
-  const previousConversationIdRef = useRef<number | null | undefined>(conversationId)
+  // Track activeConversationId to fire callback only once when it transitions from null to a value
+  const previousActiveConversationIdRef = useRef<number | null>(activeConversationId)
   useEffect(() => {
-    // Only notify if we had NO conversation (null/undefined) and now we have one
-    // This prevents the bug where switching conversations would trigger this
-    const hadNoConversation = previousConversationIdRef.current === null || previousConversationIdRef.current === undefined
-    const nowHasConversation = activeConversationId !== null && activeConversationId !== undefined
+    const hadNoConversation = previousActiveConversationIdRef.current === null
+    const nowHasConversation = activeConversationId !== null
 
     if (hadNoConversation && nowHasConversation && onConversationCreated) {
-      console.log('[AssistantChat] New conversation created:', activeConversationId)
       onConversationCreated(activeConversationId)
     }
 
-    previousConversationIdRef.current = conversationId
-  }, [activeConversationId, conversationId, onConversationCreated])
+    previousActiveConversationIdRef.current = activeConversationId
+  }, [activeConversationId, onConversationCreated])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -146,7 +143,7 @@ export function AssistantChat({
 
   const handleSend = () => {
     const content = inputValue.trim()
-    if (!content || isLoading) return
+    if (!content || isLoading || isLoadingConversation) return
 
     sendMessage(content)
     setInputValue('')
@@ -160,23 +157,30 @@ export function AssistantChat({
   }
 
   // Combine initial messages (from resumed conversation) with live messages
-  // Show initialMessages when:
-  // 1. We have initialMessages from the API
-  // 2. AND either messages is empty OR we haven't processed this conversation yet
-  // This prevents showing old conversation messages while switching
-  const isConversationSynced = lastConversationIdRef.current === conversationId && !isLoadingConversation
-  const displayMessages = initialMessages && (messages.length === 0 || !isConversationSynced)
-    ? initialMessages
-    : messages
-  console.log('[AssistantChat] displayMessages decision:', {
-    conversationId,
-    lastRef: lastConversationIdRef.current,
-    isConversationSynced,
-    initialMessagesCount: initialMessages?.length ?? 0,
-    messagesCount: messages.length,
-    displayMessagesCount: displayMessages.length,
-    showingInitial: displayMessages === initialMessages
-  })
+  // Merge both arrays with deduplication by message ID to prevent history loss
+  const displayMessages = useMemo(() => {
+    const isConversationSynced = lastConversationIdRef.current === conversationId && !isLoadingConversation
+
+    // If not synced yet, show only initialMessages (or empty)
+    if (!isConversationSynced) {
+      return initialMessages ?? []
+    }
+
+    // If no initial messages, just show live messages
+    if (!initialMessages || initialMessages.length === 0) {
+      return messages
+    }
+
+    // Merge both arrays, deduplicating by ID (live messages take precedence)
+    const messageMap = new Map<string, ChatMessage>()
+    for (const msg of initialMessages) {
+      messageMap.set(msg.id, msg)
+    }
+    for (const msg of messages) {
+      messageMap.set(msg.id, msg)
+    }
+    return Array.from(messageMap.values())
+  }, [initialMessages, messages, conversationId, isLoadingConversation])
 
   return (
     <div className="flex flex-col h-full">
@@ -288,7 +292,7 @@ export function AssistantChat({
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the codebase..."
-            disabled={isLoading || connectionStatus !== 'connected'}
+            disabled={isLoading || isLoadingConversation || connectionStatus !== 'connected'}
             className="
               flex-1
               neo-input
@@ -301,7 +305,7 @@ export function AssistantChat({
           />
           <button
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading || connectionStatus !== 'connected'}
+            disabled={!inputValue.trim() || isLoading || isLoadingConversation || connectionStatus !== 'connected'}
             className="
               neo-btn neo-btn-primary
               px-4

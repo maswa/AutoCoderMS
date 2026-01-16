@@ -25,6 +25,7 @@ export function useConversation(projectName: string | null, conversationId: numb
     queryKey: ['conversation', projectName, conversationId],
     queryFn: () => api.getAssistantConversation(projectName!, conversationId!),
     enabled: !!projectName && !!conversationId,
+    staleTime: 30_000, // Cache for 30 seconds
   })
 }
 
