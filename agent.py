@@ -23,7 +23,7 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
 from client import create_client
-from progress import has_features, print_progress_summary, print_session_header
+from progress import count_passing_tests, has_features, print_progress_summary, print_session_header
 from prompts import (
     copy_spec_to_project,
     get_coding_prompt,
@@ -173,6 +173,17 @@ async def run_autonomous_agent(
     while True:
         iteration += 1
 
+        # Check if all features are already complete (before starting a new session)
+        # Skip this check on first iteration if it's a fresh start (initializer needs to run)
+        if not is_first_run and iteration == 1:
+            passing, in_progress, total = count_passing_tests(project_dir)
+            if total > 0 and passing == total:
+                print("\n" + "=" * 70)
+                print("  ALL FEATURES ALREADY COMPLETE!")
+                print("=" * 70)
+                print(f"\nAll {total} features are passing. Nothing left to do.")
+                break
+
         # Check max iterations
         if max_iterations and iteration > max_iterations:
             print(f"\nReached max iterations ({max_iterations})")
@@ -269,6 +280,22 @@ async def run_autonomous_agent(
 
             sys.stdout.flush()  # this should allow the pause to be displayed before sleeping
             print_progress_summary(project_dir)
+
+            # Check if all features are complete - exit gracefully if done
+            passing, in_progress, total = count_passing_tests(project_dir)
+            if total > 0 and passing == total:
+                print("\n" + "=" * 70)
+                print("  ALL FEATURES COMPLETE!")
+                print("=" * 70)
+                print(f"\nCongratulations! All {total} features are passing.")
+                print("The autonomous agent has finished its work.")
+                break
+
+            # Single-feature mode: exit after one session (orchestrator manages agents)
+            if feature_id is not None:
+                print(f"\nSingle-feature mode: Feature #{feature_id} session complete.")
+                break
+
             await asyncio.sleep(delay_seconds)
 
         elif status == "error":
