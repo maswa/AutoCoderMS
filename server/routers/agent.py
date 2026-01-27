@@ -11,11 +11,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from ..schemas import AgentActionResponse, AgentStartRequest, AgentStatus
-from ..services.process_manager import get_manager
+from ..schemas import (
+    AgentActionResponse,
+    AgentStartRequest,
+    AgentStatus,
+    ResearchActionResponse,
+    ResearchStartRequest,
+    ResearchStatus,
+)
+from ..services.process_manager import get_manager, get_research_manager
 
 
-def _get_project_path(project_name: str) -> Path:
+def _get_project_path(project_name: str) -> Path | None:
     """Get project path from registry."""
     import sys
     root = Path(__file__).parent.parent.parent
@@ -182,6 +189,148 @@ async def resume_agent(project_name: str):
     success, message = await manager.resume()
 
     return AgentActionResponse(
+        success=success,
+        status=manager.status,
+        message=message,
+    )
+
+
+# ============================================================================
+# Research Agent Endpoints
+# ============================================================================
+
+
+def get_research_project_manager(project_name: str):
+    """Get the research process manager for a project."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project directory not found: {project_dir}")
+
+    return get_research_manager(project_name, project_dir, ROOT_DIR)
+
+
+def _get_research_progress(project_dir: Path) -> dict:
+    """Get research progress from the database.
+
+    Returns:
+        Dictionary with phase, files_scanned, findings_count, finalized, finalized_at
+    """
+    import sys
+    root = Path(__file__).parent.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    from api.research_database import (
+        ResearchProgress,
+        get_research_database_path,
+        get_research_session,
+    )
+
+    db_path = get_research_database_path(project_dir)
+    if not db_path.exists():
+        return {
+            "phase": None,
+            "files_scanned": 0,
+            "findings_count": 0,
+            "finalized": False,
+            "finalized_at": None,
+        }
+
+    try:
+        session = get_research_session(db_path)
+        try:
+            progress = session.query(ResearchProgress).first()
+            if progress:
+                return {
+                    "phase": progress.phase,
+                    "files_scanned": progress.files_scanned,
+                    "findings_count": progress.findings_count,
+                    "finalized": progress.is_complete(),
+                    "finalized_at": progress.completed_at,
+                }
+            return {
+                "phase": None,
+                "files_scanned": 0,
+                "findings_count": 0,
+                "finalized": False,
+                "finalized_at": None,
+            }
+        finally:
+            session.close()
+    except Exception:
+        return {
+            "phase": None,
+            "files_scanned": 0,
+            "findings_count": 0,
+            "finalized": False,
+            "finalized_at": None,
+        }
+
+
+@router.get("/research/status", response_model=ResearchStatus)
+async def get_research_status(project_name: str):
+    """Get the current status of the research agent for a project."""
+    manager = get_research_project_manager(project_name)
+    project_dir = _get_project_path(project_name)
+
+    # Run healthcheck to detect crashed processes
+    await manager.healthcheck()
+
+    # Get research progress from database
+    progress = _get_research_progress(project_dir)
+
+    return ResearchStatus(
+        status=manager.status,
+        pid=manager.pid,
+        started_at=manager.started_at.isoformat() if manager.started_at else None,
+        model=manager.model,
+        phase=progress["phase"],
+        files_scanned=progress["files_scanned"],
+        findings_count=progress["findings_count"],
+        finalized=progress["finalized"],
+        finalized_at=progress["finalized_at"],
+    )
+
+
+@router.post("/start-research", response_model=ResearchActionResponse)
+async def start_research_agent(
+    project_name: str,
+    request: ResearchStartRequest = ResearchStartRequest(),
+):
+    """Start the research agent for a project.
+
+    The research agent analyzes the codebase structure and documents findings
+    in the .planning/codebase/ directory. This is typically run before adding
+    new features to an existing codebase.
+    """
+    manager = get_research_project_manager(project_name)
+
+    # Get default model from global settings if not provided
+    _, default_model, _ = _get_settings_defaults()
+    model = request.model if request.model else default_model
+
+    success, message = await manager.start(model=model)
+
+    return ResearchActionResponse(
+        success=success,
+        status=manager.status,
+        message=message,
+    )
+
+
+@router.post("/research/stop", response_model=ResearchActionResponse)
+async def stop_research_agent(project_name: str):
+    """Stop the research agent for a project."""
+    manager = get_research_project_manager(project_name)
+
+    success, message = await manager.stop()
+
+    return ResearchActionResponse(
         success=success,
         status=manager.status,
         message=message,

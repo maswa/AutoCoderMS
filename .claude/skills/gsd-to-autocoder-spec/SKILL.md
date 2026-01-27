@@ -19,6 +19,8 @@ Converts `.planning/codebase/*.md` (GSD mapping output) to `prompts/app_spec.txt
 
 ## Prerequisites
 
+**Note:** If `.planning/codebase/` doesn't exist, run `/gsd:map-codebase` first to analyze the codebase.
+
 The project must have `.planning/codebase/` with these files:
 - `STACK.md` - Technology stack (required)
 - `ARCHITECTURE.md` - Code architecture (required)

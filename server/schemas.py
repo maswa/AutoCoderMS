@@ -287,6 +287,28 @@ class WSAgentUpdateMessage(BaseModel):
     timestamp: datetime
 
 
+# Research phase for research agent tracking
+ResearchPhase = Literal["idle", "scanning", "analyzing", "documenting", "complete"]
+
+
+class WSResearchUpdateMessage(BaseModel):
+    """WebSocket message for research agent progress updates.
+
+    Emitted during codebase research to show scanning progress,
+    findings count, and current phase.
+    """
+    type: Literal["research_update"] = "research_update"
+    eventType: str  # Event that triggered update (e.g., 'scan_files', 'add_finding')
+    phase: ResearchPhase
+    message: str  # Human-readable status message
+    timestamp: datetime
+    filesScanned: int = 0  # Number of files scanned so far
+    findingsCount: int = 0  # Number of research findings recorded
+    finalized: bool = False  # Whether research has been written to files
+    currentTool: str | None = None  # Last MCP tool invoked
+    filesWritten: list[str] = Field(default_factory=list)  # Output files after finalization
+
+
 # ============================================================================
 # Spec Chat Schemas
 # ============================================================================
@@ -566,3 +588,42 @@ class NextRunResponse(BaseModel):
     next_end: datetime | None  # UTC (latest end if overlapping)
     is_currently_running: bool
     active_schedule_count: int
+
+
+# ============================================================================
+# Research Agent Schemas
+# ============================================================================
+
+
+class ResearchStartRequest(BaseModel):
+    """Request schema for starting the research agent."""
+    model: str | None = None  # None means use global settings
+
+    @field_validator('model')
+    @classmethod
+    def validate_model(cls, v: str | None) -> str | None:
+        """Validate model is in the allowed list."""
+        if v is not None and v not in VALID_MODELS:
+            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+        return v
+
+
+class ResearchStatus(BaseModel):
+    """Current research agent status."""
+    status: Literal["stopped", "running", "paused", "crashed"]
+    pid: int | None = None
+    started_at: datetime | None = None
+    model: str | None = None
+    # Research progress from the database
+    phase: str | None = None  # scanning, analyzing, documenting, complete
+    files_scanned: int = 0
+    findings_count: int = 0
+    finalized: bool = False
+    finalized_at: datetime | None = None
+
+
+class ResearchActionResponse(BaseModel):
+    """Response for research agent control actions."""
+    success: bool
+    status: str
+    message: str = ""

@@ -8,6 +8,7 @@ This is an autonomous coding agent system with a React-based UI. It uses the Cla
 
 1. **Initializer Agent** - First session reads an app spec and creates features in a SQLite database
 2. **Coding Agent** - Subsequent sessions implement features one by one, marking them as passing
+3. **Research Agent** - Analyzes existing codebases and generates documentation
 
 ## Commands
 
@@ -48,6 +49,9 @@ python autonomous_agent_demo.py --project-dir my-app --yolo
 
 # Parallel mode: run multiple agents concurrently (1-5 agents)
 python autonomous_agent_demo.py --project-dir my-app --parallel --max-concurrency 3
+
+# Research agent for existing codebases
+python autonomous_agent_demo.py --project-dir my-app --agent-type research
 ```
 
 ### YOLO Mode (Rapid Prototyping)
@@ -73,6 +77,28 @@ python autonomous_agent_demo.py --project-dir my-app --yolo
 - All other development tools available
 
 **When to use:** Early prototyping when you want to quickly scaffold features without verification overhead. Switch back to standard mode for production-quality development.
+
+### Research Agent
+
+The research agent analyzes existing codebases before using Autocoder, generating documentation that helps the coding agent understand the project structure and conventions.
+
+**Purpose:** Analyze existing codebases to generate comprehensive documentation for onboarding projects to Autocoder.
+
+**Commands:**
+- `/gsd:map-codebase` - Start research analysis via Claude Code skill
+- `python autonomous_agent_demo.py --project-dir my-app --agent-type research` - Run directly
+
+**Output:** Documentation files in `.planning/codebase/`:
+- `STACK.md` - Technology stack and dependencies
+- `ARCHITECTURE.md` - System architecture and design patterns
+- `STRUCTURE.md` - Directory structure and file organization
+- `CONVENTIONS.md` - Coding conventions and style guides
+- `INTEGRATIONS.md` - External integrations and APIs
+
+**Workflow:**
+1. Run `/gsd:map-codebase` to analyze the existing codebase
+2. Run `/gsd-to-autocoder-spec` to convert documentation to an Autocoder app spec
+3. Use Autocoder normally with the generated spec
 
 ### React UI (in ui/ directory)
 

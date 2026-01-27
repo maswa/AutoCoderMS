@@ -28,6 +28,7 @@ from prompts import (
     copy_spec_to_project,
     get_coding_prompt,
     get_initializer_prompt,
+    get_research_prompt,
     get_single_feature_prompt,
     get_testing_prompt,
 )
@@ -128,7 +129,7 @@ async def run_autonomous_agent(
         max_iterations: Maximum number of iterations (None for unlimited)
         yolo_mode: If True, skip browser testing in coding agent prompts
         feature_id: If set, work only on this specific feature (used by orchestrator for coding agents)
-        agent_type: Type of agent: "initializer", "coding", "testing", or None (auto-detect)
+        agent_type: Type of agent: "initializer", "coding", "testing", "research", or None (auto-detect)
         testing_feature_id: For testing agents, the pre-claimed feature ID to test
     """
     print("\n" + "=" * 70)
@@ -177,6 +178,14 @@ async def run_autonomous_agent(
     elif agent_type == "testing":
         print("Running as TESTING agent (regression testing)")
         print_progress_summary(project_dir)
+    elif agent_type == "research":
+        print("Running as RESEARCH agent (codebase analysis)")
+        print()
+        print("=" * 70)
+        print("  NOTE: Research phase analyzes existing codebase.")
+        print("  The agent is mapping code structure and patterns.")
+        print("=" * 70)
+        print()
     else:
         print("Running as CODING agent")
         print_progress_summary(project_dir)
@@ -216,13 +225,15 @@ async def run_autonomous_agent(
             agent_id = f"feature-{feature_id}"
         else:
             agent_id = None
-        client = create_client(project_dir, model, yolo_mode=yolo_mode, agent_id=agent_id)
+        client = create_client(project_dir, model, yolo_mode=yolo_mode, agent_id=agent_id, agent_type=agent_type)
 
         # Choose prompt based on agent type
         if agent_type == "initializer":
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
             prompt = get_testing_prompt(project_dir, testing_feature_id)
+        elif agent_type == "research":
+            prompt = get_research_prompt(project_dir)
         elif feature_id:
             # Single-feature mode (used by orchestrator for coding agents)
             prompt = get_single_feature_prompt(feature_id, project_dir, yolo_mode)
