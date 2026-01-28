@@ -102,6 +102,9 @@ research.db
 # Prompts directory in root (for development/testing)
 prompts/
 
+# Experimental/local scripts
+run_stats_tracker.py
+
 # ===================
 # IDE / Editors
 # ===================
