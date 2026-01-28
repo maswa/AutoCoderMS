@@ -187,7 +187,7 @@ export function AnalyzeCodebaseModal({
   // Confirmation step - project name and start button
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <Search size={24} className="text-primary" />

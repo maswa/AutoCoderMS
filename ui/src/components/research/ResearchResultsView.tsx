@@ -2,7 +2,7 @@
  * ResearchResultsView Component
  *
  * Displays the generated documentation after a successful codebase analysis.
- * Shows summary stats, tabbed document viewer with markdown rendering, and action buttons.
+ * Shows tabbed document viewer with markdown rendering and action buttons.
  */
 
 import { useState } from 'react'
@@ -81,13 +81,6 @@ async function fetchResearchDocs(projectName: string): Promise<ResearchDocsRespo
 function LoadingSkeleton() {
   return (
     <div className="space-y-6 animate-pulse">
-      {/* Summary card skeleton */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-20 bg-muted rounded-lg" />
-        ))}
-      </div>
-
       {/* Tabs skeleton */}
       <div className="h-10 bg-muted rounded-lg w-full max-w-2xl" />
 
@@ -102,38 +95,6 @@ function LoadingSkeleton() {
         <div className="h-4 bg-muted rounded w-3/4" />
       </div>
     </div>
-  )
-}
-
-/**
- * Summary statistics card
- */
-interface SummaryStatProps {
-  icon: React.ElementType
-  label: string
-  value: string | number
-  variant?: 'default' | 'primary'
-}
-
-function SummaryStat({ icon: Icon, label, value, variant = 'default' }: SummaryStatProps) {
-  return (
-    <Card className={cn(
-      'py-4',
-      variant === 'primary' && 'border-primary/50 bg-primary/5'
-    )}>
-      <CardContent className="p-4 flex items-center gap-3">
-        <div className={cn(
-          'p-2 rounded-lg',
-          variant === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted'
-        )}>
-          <Icon size={20} />
-        </div>
-        <div>
-          <div className="text-2xl font-bold tabular-nums">{value}</div>
-          <div className="text-sm text-muted-foreground">{label}</div>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -215,46 +176,13 @@ export function ResearchResultsView({
     }
   }
 
-  // Extract stats from the markdown content for the summary
-  const extractStats = () => {
-    let techCount = 0
-    let fileCount = 0
-    let integrationCount = 0
-
-    const stackDoc = data?.docs.find((doc) => doc.filename === 'STACK.md')
-    const structureDoc = data?.docs.find((doc) => doc.filename === 'STRUCTURE.md')
-    const integrationsDoc = data?.docs.find((doc) => doc.filename === 'INTEGRATIONS.md')
-
-    if (stackDoc?.content) {
-      // Count items in lists after "Primary Technologies" or similar headers
-      const techMatches = stackDoc.content.match(/^[-*]\s+\*\*[^*]+\*\*/gm)
-      techCount = techMatches?.length || 0
-    }
-
-    if (structureDoc?.content) {
-      // Count directory entries
-      const dirMatches = structureDoc.content.match(/^[-*]\s+`[^`]+`/gm)
-      fileCount = dirMatches?.length || 0
-    }
-
-    if (integrationsDoc?.content) {
-      // Count h2 headers as integrations
-      const integrationMatches = integrationsDoc.content.match(/^##\s+/gm)
-      integrationCount = integrationMatches?.length || 0
-    }
-
-    return { techCount, fileCount, integrationCount }
-  }
-
-  const stats = data?.docs ? extractStats() : { techCount: 0, fileCount: 0, integrationCount: 0 }
-
   // Format generation timestamp
   const generatedAt = data?.generated_at
     ? new Date(data.generated_at * 1000)
     : null
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
@@ -305,33 +233,8 @@ export function ResearchResultsView({
       {/* Main Content */}
       {data && data.docs.length > 0 && (
         <>
-          {/* Summary Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <SummaryStat
-              icon={FileText}
-              label="Documents"
-              value={data.docs.length}
-              variant="primary"
-            />
-            <SummaryStat
-              icon={Layers}
-              label="Technologies"
-              value={stats.techCount || '-'}
-            />
-            <SummaryStat
-              icon={Code2}
-              label="Directories"
-              value={stats.fileCount || '-'}
-            />
-            <SummaryStat
-              icon={Plug}
-              label="Integrations"
-              value={stats.integrationCount || '-'}
-            />
-          </div>
-
           {/* Tabbed Document Viewer */}
-          <Card>
+          <Card className="border-2 border-border">
             <CardHeader className="pb-0">
               <CardTitle className="text-lg">Generated Documentation</CardTitle>
             </CardHeader>
@@ -363,40 +266,43 @@ export function ResearchResultsView({
                   const doc = data.docs.find((d) => d.filename === tab.filename)
                   return (
                     <TabsContent key={tab.filename} value={tab.filename}>
-                      {/* Copy button */}
-                      {doc && (
-                        <div className="flex justify-end mb-4">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCopy(tab.filename, doc.content)}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            {copiedDoc === tab.filename ? (
-                              <>
-                                <Check className="size-4 mr-2 text-primary" />
-                                Copied!
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="size-4 mr-2" />
-                                Copy
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      )}
-
-                      <ScrollArea className="h-[60vh] pr-4">
-                        {doc?.content ? (
-                          <MarkdownViewer content={doc.content} />
-                        ) : (
-                          <div className="text-center py-12 text-muted-foreground">
-                            <FileText size={32} className="mx-auto mb-2 opacity-50" />
-                            <p>No content available for this document.</p>
+                      {/* Content container with subtle background */}
+                      <div className="rounded-lg border border-border bg-muted/30 p-6">
+                        {/* Copy button */}
+                        {doc && (
+                          <div className="flex justify-end mb-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCopy(tab.filename, doc.content)}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              {copiedDoc === tab.filename ? (
+                                <>
+                                  <Check className="size-4 mr-2 text-primary" />
+                                  Copied!
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="size-4 mr-2" />
+                                  Copy
+                                </>
+                              )}
+                            </Button>
                           </div>
                         )}
-                      </ScrollArea>
+
+                        <ScrollArea className="h-[60vh]">
+                          {doc?.content ? (
+                            <MarkdownViewer content={doc.content} />
+                          ) : (
+                            <div className="text-center py-12 text-muted-foreground">
+                              <FileText size={32} className="mx-auto mb-2 opacity-50" />
+                              <p>No content available for this document.</p>
+                            </div>
+                          )}
+                        </ScrollArea>
+                      </div>
                     </TabsContent>
                   )
                 })}

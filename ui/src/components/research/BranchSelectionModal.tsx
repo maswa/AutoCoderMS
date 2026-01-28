@@ -105,6 +105,7 @@ export function BranchSelectionModal({
   const [newBranchName, setNewBranchName] = useState('')
   const [baseBranch, setBaseBranch] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showProtectedConfirm, setShowProtectedConfirm] = useState(false)
 
   const queryClient = useQueryClient()
 
@@ -155,6 +156,7 @@ export function BranchSelectionModal({
       setNewBranchName(suggestBranchName(projectName))
       setBaseBranch(null)
       setError(null)
+      setShowProtectedConfirm(false)
     }
   }, [isOpen, projectName])
 
@@ -169,12 +171,23 @@ export function BranchSelectionModal({
   const handleSelectBranch = (branch: GitBranchType) => {
     setSelectedBranch(branch.name)
     setError(null)
+    setShowProtectedConfirm(false)
   }
+
+  // Check if a branch is protected
+  const isBranchProtected = (name: string) =>
+    branchData?.protected_branches.includes(name) ?? false
 
   // Continue with selected branch
   const handleContinueWithBranch = () => {
     if (!selectedBranch) {
       setError('Please select a branch')
+      return
+    }
+
+    // Warn if selecting a protected branch
+    if (isBranchProtected(selectedBranch) && !showProtectedConfirm) {
+      setShowProtectedConfirm(true)
       return
     }
 
@@ -190,9 +203,16 @@ export function BranchSelectionModal({
 
   // Continue on current branch (skip selection)
   const handleContinueOnCurrent = () => {
-    if (branchData?.current_branch) {
-      onBranchSelected(branchData.current_branch)
+    if (!branchData?.current_branch) return
+
+    // Warn if current branch is protected
+    if (isBranchProtected(branchData.current_branch) && !showProtectedConfirm) {
+      setSelectedBranch(branchData.current_branch)
+      setShowProtectedConfirm(true)
+      return
     }
+
+    onBranchSelected(branchData.current_branch)
   }
 
   // Switch to create branch step
@@ -244,7 +264,6 @@ export function BranchSelectionModal({
 
   const isLoading = createBranchMutation.isPending || checkoutMutation.isPending
   const isNotGitRepo = branchData && !branchData.is_git_repo
-  const hasUncommitted = branchData?.has_uncommitted_changes
 
   // Not a git repo - show warning and allow continuing
   if (isNotGitRepo) {
@@ -306,27 +325,31 @@ export function BranchSelectionModal({
           <div className="space-y-4 py-4">
             {/* Current branch info */}
             {branchData?.current_branch && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Currently on:</span>
-                <Badge variant="secondary" className="font-mono">
-                  {branchData.current_branch}
-                </Badge>
-                {branchData.protected_branches.includes(branchData.current_branch) && (
-                  <Badge variant="outline" className="text-warning border-warning">
-                    Protected
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Currently on:</span>
+                  <Badge variant="secondary" className="font-mono">
+                    {branchData.current_branch}
                   </Badge>
+                </div>
+                {branchData.protected_branches.includes(branchData.current_branch) && !showProtectedConfirm && (
+                  <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                    <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      For autonomous coding, we recommend creating a new feature branch instead of working directly on <span className="font-mono font-semibold">{branchData.current_branch}</span>. This keeps your production code safe.
+                    </p>
+                  </div>
+                )}
+                {showProtectedConfirm && (
+                  <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                    <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div className="text-sm text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold">Are you sure you want to continue on <span className="font-mono">{selectedBranch || branchData.current_branch}</span>?</p>
+                      <p className="mt-1">The autonomous coding agent will make commits directly to this branch. Any changes will be harder to undo compared to using a separate feature branch.</p>
+                    </div>
+                  </div>
                 )}
               </div>
-            )}
-
-            {/* Uncommitted changes warning */}
-            {hasUncommitted && (
-              <Alert variant="destructive" className="py-2">
-                <AlertTriangle size={16} />
-                <AlertDescription>
-                  You have uncommitted changes. Commit or stash them before switching branches.
-                </AlertDescription>
-              </Alert>
             )}
 
             {/* Loading state */}
@@ -384,11 +407,6 @@ export function BranchSelectionModal({
                               Current
                             </Badge>
                           )}
-                          {branch.is_protected && (
-                            <Badge variant="outline" className="text-xs text-warning border-warning">
-                              Protected
-                            </Badge>
-                          )}
                         </label>
                       </div>
                     ))}
@@ -418,10 +436,39 @@ export function BranchSelectionModal({
           </div>
 
           <DialogFooter className="sm:justify-between">
-            <Button variant="ghost" onClick={handleClose} disabled={isLoading}>
-              Cancel
+            <Button variant="ghost" onClick={showProtectedConfirm ? () => setShowProtectedConfirm(false) : handleClose} disabled={isLoading}>
+              {showProtectedConfirm ? 'Back' : 'Cancel'}
             </Button>
             <div className="flex items-center gap-2">
+              {showProtectedConfirm ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleGoToCreate}
+                  >
+                    <GitBranchPlus size={16} />
+                    Create Branch Instead
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleContinueWithBranch}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Switching...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={16} />
+                        Yes, Continue on {selectedBranch || branchData?.current_branch}
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
               {branchData?.current_branch && (
                 <Button
                   variant="outline"
@@ -447,6 +494,8 @@ export function BranchSelectionModal({
                   </>
                 )}
               </Button>
+                </>
+              )}
             </div>
           </DialogFooter>
         </DialogContent>
@@ -520,16 +569,6 @@ export function BranchSelectionModal({
                   ))}
               </RadioGroup>
             </div>
-          )}
-
-          {/* Uncommitted changes warning */}
-          {hasUncommitted && (
-            <Alert variant="destructive" className="py-2">
-              <AlertTriangle size={16} />
-              <AlertDescription>
-                Uncommitted changes will be carried to the new branch.
-              </AlertDescription>
-            </Alert>
           )}
 
           {/* Error display */}

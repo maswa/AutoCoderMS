@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Routes, Route, useParams, useNavigate } from 'react-router-dom'
+import { Routes, Route, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
@@ -56,6 +56,7 @@ function ResearchResultsRoute() {
     // Store the selected project in localStorage so the dashboard picks it up
     try {
       localStorage.setItem(STORAGE_KEY, projectName)
+      localStorage.setItem('autocoder-from-research', 'true')
     } catch {
       // localStorage not available
     }
@@ -77,6 +78,9 @@ function ResearchResultsRoute() {
 }
 
 function App() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
   // Initialize selected project from localStorage
   const [selectedProject, setSelectedProject] = useState<string | null>(() => {
     try {
@@ -97,6 +101,7 @@ function App() {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [isSpecCreating, setIsSpecCreating] = useState(false)
   const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
+  const [fromResearch, setFromResearch] = useState(false)  // True when navigating from research results
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -135,6 +140,22 @@ function App() {
     }
   }, [viewMode])
 
+  // Detect navigation from research results and auto-open spec chat
+  useEffect(() => {
+    if (location.pathname === '/') {
+      try {
+        const flag = localStorage.getItem('autocoder-from-research')
+        if (flag === 'true') {
+          localStorage.removeItem('autocoder-from-research')
+          setFromResearch(true)
+          setShowSpecChat(true)
+        }
+      } catch {
+        // localStorage not available
+      }
+    }
+  }, [location.pathname])
+
   // Play sounds when features move between columns
   useFeatureSound(features)
 
@@ -154,6 +175,12 @@ function App() {
       // localStorage not available
     }
   }, [])
+
+  // Handle starting analysis on existing codebase
+  const handleStartAnalysis = useCallback((projectName: string, _projectDir: string) => {
+    // Navigate to the research progress view
+    navigate(`/research/${encodeURIComponent(projectName)}`)
+  }, [navigate])
 
   // Handle graph node click - memoized to prevent DependencyGraph re-renders
   const handleGraphNodeClick = useCallback((nodeId: number) => {
@@ -305,6 +332,7 @@ function App() {
                 onSelectProject={handleSelectProject}
                 isLoading={projectsLoading}
                 onSpecCreatingChange={setIsSpecCreating}
+                onStartAnalysis={handleStartAnalysis}
               />
 
               {selectedProject && (
@@ -501,19 +529,21 @@ function App() {
         />
       )}
 
-      {/* Spec Creation Chat - for creating spec from empty kanban */}
+      {/* Spec Creation Chat - for creating spec from empty kanban or from research results */}
       {showSpecChat && selectedProject && (
         <div className="fixed inset-0 z-50 bg-background">
           <SpecCreationChat
             projectName={selectedProject}
+            fromResearch={fromResearch}
             onComplete={() => {
               setShowSpecChat(false)
+              setFromResearch(false)
               // Refresh projects to update has_spec
               queryClient.invalidateQueries({ queryKey: ['projects'] })
               queryClient.invalidateQueries({ queryKey: ['features', selectedProject] })
             }}
-            onCancel={() => setShowSpecChat(false)}
-            onExitToProject={() => setShowSpecChat(false)}
+            onCancel={() => { setShowSpecChat(false); setFromResearch(false) }}
+            onExitToProject={() => { setShowSpecChat(false); setFromResearch(false) }}
           />
         </div>
       )}

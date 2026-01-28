@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Microscope, FileSearch, Brain, FileText, CheckCircle, Square, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,15 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useProjectWebSocket } from '@/hooks/useWebSocket'
 import type { ResearchPhase, ResearchLogEntry } from '@/lib/types'
+
+// Fetch research status from API
+async function fetchResearchStatus(projectName: string) {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectName)}/agent/research/status`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch research status')
+  }
+  return response.json()
+}
 
 interface ResearchProgressViewProps {
   projectName: string
@@ -164,10 +174,26 @@ function formatLogTime(timestamp: string): string {
 
 export function ResearchProgressView({ projectName }: ResearchProgressViewProps) {
   const navigate = useNavigate()
-  const { researchState, isConnected } = useProjectWebSocket(projectName)
+  const { researchState: wsResearchState, isConnected } = useProjectWebSocket(projectName)
   const [isLogsExpanded, setIsLogsExpanded] = useState(true)
   const [isStopping, setIsStopping] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
+
+  // Poll research status from API to get current state (especially if we missed WebSocket updates)
+  const { data: apiStatus } = useQuery({
+    queryKey: ['researchStatus', projectName],
+    queryFn: () => fetchResearchStatus(projectName),
+    refetchInterval: 2000, // Poll every 2 seconds
+    enabled: !!projectName,
+  })
+
+  // Merge WebSocket state with API status - WebSocket takes priority for real-time updates
+  const researchState = wsResearchState ?? (apiStatus ? {
+    phase: apiStatus.phase as ResearchPhase,
+    filesScanned: apiStatus.files_scanned,
+    findingsCount: apiStatus.findings_count,
+    logs: [],
+  } : null)
 
   // Scroll to bottom of logs when new entries arrive
   useEffect(() => {
