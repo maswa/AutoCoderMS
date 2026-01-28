@@ -1,8 +1,22 @@
-# AutoCoder
+# AutoCoderMS
+
+> **Fork of [leonvanzyl/autocoder](https://github.com/leonvanzyl/autocoder)** with additional features
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/leonvanzyl)
 
 A long-running autonomous coding agent powered by the Claude Agent SDK. This tool can build complete applications over multiple sessions using a two-agent pattern (initializer + coding agent). Includes a React-based UI for monitoring progress in real-time.
+
+## Additional Features in This Fork
+
+| Feature | Description |
+|---------|-------------|
+| **Research Agent** | Analyze existing codebases and generate documentation before coding |
+| **Smart Testing Mode** | Skip Playwright browser for API features to reduce overhead |
+| **Git Branch Safety** | Protected branch warnings and new branch creation before coding |
+| **UI Themes** | 5 themes: Twitter, Claude, Neo Brutalism, Retro Arcade, Aurora |
+| **YOLO Mode** | Skip all testing for rapid prototyping |
+
+See [CUSTOM_UPDATES.md](CUSTOM_UPDATES.md) for detailed documentation of all additions.
 
 ## Video Tutorial
 
@@ -111,6 +125,24 @@ Features are stored in SQLite via SQLAlchemy and managed through an MCP server t
 - The agent auto-continues between sessions (3 second delay)
 - Press `Ctrl+C` to pause; run the start script again to resume
 
+### Research Agent (Existing Codebases)
+
+For working with **existing projects**, the Research Agent analyzes your codebase first:
+
+1. **Run research:** Click "Analyze Existing Codebase" in the UI or run:
+   ```bash
+   python autonomous_agent_demo.py --project-dir /path/to/project --agent-type research
+   ```
+
+2. **Generated documentation** (in `.planning/codebase/`):
+   - `STACK.md` - Technology stack and dependencies
+   - `ARCHITECTURE.md` - System architecture and patterns
+   - `STRUCTURE.md` - Directory layout
+   - `CONVENTIONS.md` - Code style and naming
+   - `INTEGRATIONS.md` - APIs and external services
+
+3. **Convert to spec:** After research, convert findings to an app spec and continue with normal AutoCoder workflow.
+
 ---
 
 ## Important Timing Expectations
@@ -144,9 +176,14 @@ autonomous-coding/
 ├── progress.py               # Progress tracking utilities
 ├── prompts.py                # Prompt loading utilities
 ├── api/
-│   └── database.py           # SQLAlchemy models (Feature table)
+│   ├── database.py           # SQLAlchemy models (Feature table)
+│   ├── research_database.py  # Research agent data models
+│   ├── stack_detector.py     # Technology stack detection
+│   ├── pattern_analyzer.py   # Architecture pattern analysis
+│   └── convention_extractor.py # Code convention extraction
 ├── mcp_server/
-│   └── feature_mcp.py        # MCP server for feature management tools
+│   ├── feature_mcp.py        # MCP server for feature management tools
+│   └── research_mcp.py       # MCP server for research agent
 ├── server/
 │   ├── main.py               # FastAPI REST API server
 │   ├── websocket.py          # WebSocket handler for real-time updates
@@ -307,6 +344,40 @@ Get an API key at: https://z.ai/subscribe
 
 ---
 
+## Settings
+
+Access settings via the gear icon in the UI or CLI flags.
+
+### Testing Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Full** | Playwright browser for all features | Production quality |
+| **Smart** | Playwright for UI features only, skip for API/backend | Balanced (recommended) |
+| **YOLO** | Skip all testing | Rapid prototyping |
+
+**CLI:**
+```bash
+# Smart testing mode
+python autonomous_agent_demo.py --project-dir myapp --testing-mode smart
+
+# YOLO mode (no testing at all)
+python autonomous_agent_demo.py --project-dir myapp --yolo
+```
+
+### Model Selection
+
+Choose between Claude Opus (slower, more capable) and Sonnet (faster, cheaper) in the Settings modal.
+
+### Parallel Mode
+
+Run multiple agents concurrently:
+```bash
+python autonomous_agent_demo.py --project-dir myapp --parallel --max-concurrency 3
+```
+
+---
+
 ## Customization
 
 ### Changing the Application
@@ -340,4 +411,6 @@ The agent tried to run a command not in the allowlist. This is the security syst
 ## License
 
 This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE.md](LICENSE.md) file for details.
-Copyright (C) 2026 Leon van Zyl (https://leonvanzyl.com)
+
+Original project: Copyright (C) 2026 Leon van Zyl (https://leonvanzyl.com)
+Fork maintained by: Marcel Swarts
