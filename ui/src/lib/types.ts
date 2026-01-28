@@ -238,7 +238,7 @@ export interface OrchestratorStatus {
 }
 
 // WebSocket message types
-export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update'
+export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'research_update'
 
 export interface WSProgressMessage {
   type: 'progress'
@@ -312,6 +312,19 @@ export interface WSOrchestratorUpdateMessage {
   featureName?: string
 }
 
+export interface WSResearchUpdateMessage {
+  type: 'research_update'
+  eventType: string
+  phase: ResearchPhase
+  message: string
+  timestamp: string
+  filesScanned: number
+  findingsCount: number
+  finalized: boolean
+  currentTool: string | null
+  filesWritten: string[]
+}
+
 export type WSMessage =
   | WSProgressMessage
   | WSFeatureUpdateMessage
@@ -322,6 +335,7 @@ export type WSMessage =
   | WSDevLogMessage
   | WSDevServerStatusMessage
   | WSOrchestratorUpdateMessage
+  | WSResearchUpdateMessage
 
 // ============================================================================
 // Spec Chat Types
@@ -584,4 +598,50 @@ export interface NextRunResponse {
   next_end: string | null    // ISO datetime in UTC (latest end if overlapping)
   is_currently_running: boolean
   active_schedule_count: number
+}
+
+// ============================================================================
+// Research Agent Types
+// ============================================================================
+
+export type ResearchPhase = 'idle' | 'scanning' | 'analyzing' | 'documenting' | 'complete'
+
+export interface ResearchUpdate {
+  type: 'research_update'
+  eventType: string
+  phase: ResearchPhase
+  message: string
+  timestamp: string
+  filesScanned: number
+  findingsCount: number
+  finalized: boolean
+  currentTool: string | null
+  filesWritten: string[]
+}
+
+export interface ResearchLogEntry {
+  message: string
+  timestamp: string
+  eventType: string
+}
+
+export interface ResearchDoc {
+  filename: string
+  content: string
+}
+
+export interface ResearchDocsResponse {
+  success: boolean
+  docs: ResearchDoc[]
+  generated_at: number
+}
+
+export interface ResearchProject {
+  name: string
+  dir: string
+  status: 'analyzing' | 'complete' | 'error'
+  phase: ResearchPhase
+  filesScanned: number
+  findingsCount: number
+  completedAt?: string
 }

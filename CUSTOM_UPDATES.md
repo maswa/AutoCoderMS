@@ -9,7 +9,8 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 1. [UI Theme Customization](#1-ui-theme-customization)
 2. [Playwright Browser Configuration](#2-playwright-browser-configuration)
 3. [Research Agent (AutoCoder Plus)](#3-research-agent-autocoder-plus)
-4. [Update Checklist](#update-checklist)
+4. [Research Agent UI Integration](#4-research-agent-ui-integration)
+5. [Update Checklist](#update-checklist)
 
 ---
 
@@ -317,15 +318,176 @@ All changes are on branch: `feature/research-agent`
 
 ---
 
-## 4. Update Checklist
+## 4. Research Agent UI Integration
+
+### Overview
+
+Added a complete UI flow for analyzing existing codebases directly from the browser. Users can now select a folder, watch the research progress in real-time, and view the generated documentation.
+
+**User Flow:**
+```
+Landing Page → "Analyze Existing Codebase" (dropdown)
+      ↓
+Modal: Select folder + enter project name
+      ↓
+Progress View: Real-time updates via WebSocket
+      ↓
+Results View: Tabbed markdown documentation
+      ↓
+"Convert to AutoCoder Spec" → Continue to spec creation
+```
+
+### New UI Components
+
+| File | Purpose |
+|------|---------|
+| `ui/src/components/research/AnalyzeCodebaseModal.tsx` | Folder selection modal with project naming |
+| `ui/src/components/research/ResearchProgressView.tsx` | Real-time progress with 🔬 mascot and WebSocket |
+| `ui/src/components/research/ResearchResultsView.tsx` | Tabbed view for 5 documentation files |
+| `ui/src/components/research/MarkdownViewer.tsx` | Markdown rendering with syntax highlighting |
+| `ui/src/components/research/index.ts` | Barrel exports |
+
+### Modified UI Files
+
+#### `ui/src/components/ProjectSelector.tsx`
+
+**Added "Analyze Existing Codebase" option:**
+```tsx
+// New dropdown menu item
+<DropdownMenuItem onSelect={() => setShowAnalyzeModal(true)}>
+  <FolderSearch size={16} />
+  Analyze Existing Codebase
+</DropdownMenuItem>
+
+// Modal integration
+<AnalyzeCodebaseModal
+  isOpen={showAnalyzeModal}
+  onClose={() => setShowAnalyzeModal(false)}
+  onStartAnalysis={(projectName, projectDir) => {
+    navigate(`/research/${projectName}`)
+  }}
+/>
+```
+
+#### `ui/src/App.tsx`
+
+**Added research routes:**
+```tsx
+<Route path="/research/:projectName" element={<ResearchProgressView />} />
+<Route path="/research/:projectName/results" element={<ResearchResultsView />} />
+```
+
+#### `ui/src/main.tsx`
+
+**Added BrowserRouter:**
+```tsx
+import { BrowserRouter } from 'react-router-dom'
+
+<BrowserRouter>
+  <App />
+</BrowserRouter>
+```
+
+#### `ui/src/hooks/useWebSocket.ts`
+
+**Added research_update message handling:**
+```tsx
+case 'research_update':
+  setState(prev => ({
+    ...prev,
+    researchPhase: message.phase,
+    researchFilesScanned: message.files_scanned,
+    researchFindingsCount: message.findings_count,
+    researchLogs: [...prev.researchLogs, { message: message.message, timestamp: Date.now() }]
+  }))
+  break
+```
+
+#### `ui/src/lib/types.ts`
+
+**Added research types:**
+```typescript
+export type ResearchPhase = 'idle' | 'scanning' | 'analyzing' | 'documenting' | 'complete'
+
+export interface ResearchDoc {
+  filename: string
+  content: string
+}
+
+export interface ResearchDocsResponse {
+  success: boolean
+  docs: ResearchDoc[]
+  generated_at: number
+}
+
+export interface ResearchProject {
+  name: string
+  dir: string
+  status: 'analyzing' | 'complete' | 'error'
+  phase: ResearchPhase
+  filesScanned: number
+  findingsCount: number
+  completedAt?: string
+}
+```
+
+### New Backend Endpoint
+
+#### `server/routers/projects.py`
+
+**Added GET /{name}/research-docs:**
+```python
+@router.get("/{name}/research-docs")
+async def get_research_docs(name: str):
+    """Get generated research documentation for a project."""
+    # Returns: { success, docs: [{filename, content}], generated_at }
+```
+
+### New Dependencies
+
+```json
+{
+  "react-router-dom": "^7.x",
+  "react-markdown": "^9.0.0",
+  "remark-gfm": "^4.0.0",
+  "react-syntax-highlighter": "^15.5.0"
+}
+```
+
+### UI Features
+
+- **Folder Browser**: Reuses existing `FolderBrowser` component
+- **Progress Display**: Animated progress bar with phase indicators
+- **Research Mascot**: 🔬 scientist robot with phase-based animations
+- **Terminal Output**: Collapsible log viewer with timestamps
+- **Markdown Viewer**: Syntax highlighting for 20+ languages, copy-to-clipboard
+- **Tab Navigation**: 5 tabs for STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS
+- **Theme Compatible**: Works with all 5 themes (Twitter, Claude, Neo Brutalism, Retro Arcade, Aurora)
+- **Responsive Design**: Mobile-friendly layout
+
+---
+
+## 5. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
-### UI Changes
+### UI Theme Changes
 - [ ] `ui/src/styles/custom-theme.css` is preserved
 - [ ] `ui/src/components/KanbanColumn.tsx` changes are preserved
-- [ ] Run `npm run build` in `ui/` directory
 - [ ] Test both light and dark modes
+
+### Research UI Components (new)
+- [ ] `ui/src/components/research/AnalyzeCodebaseModal.tsx` - Folder selection modal
+- [ ] `ui/src/components/research/ResearchProgressView.tsx` - Progress display
+- [ ] `ui/src/components/research/ResearchResultsView.tsx` - Results viewer
+- [ ] `ui/src/components/research/MarkdownViewer.tsx` - Markdown renderer
+- [ ] `ui/src/components/research/index.ts` - Barrel exports
+- [ ] `ui/src/App.tsx` - Research routes preserved
+- [ ] `ui/src/main.tsx` - BrowserRouter wrapper preserved
+- [ ] `ui/src/components/ProjectSelector.tsx` - Analyze button preserved
+- [ ] `ui/src/hooks/useWebSocket.ts` - research_update handling preserved
+- [ ] `ui/src/lib/types.ts` - Research types preserved
+- [ ] Run `npm run build` in `ui/` directory
 
 ### Backend Changes
 - [ ] `client.py` - Playwright browser/headless defaults preserved
@@ -377,7 +539,16 @@ git checkout client.py .env.example
 |------|------|-------------------|
 | `ui/src/styles/custom-theme.css` | UI | Twitter-style theme |
 | `ui/src/components/KanbanColumn.tsx` | UI | Themeable kanban columns |
-| `ui/src/main.tsx` | UI | Imports custom theme |
+| `ui/src/main.tsx` | UI | BrowserRouter wrapper + custom theme import |
+| `ui/src/App.tsx` | UI | Research routes |
+| `ui/src/components/ProjectSelector.tsx` | UI | "Analyze Existing Codebase" button |
+| `ui/src/components/research/AnalyzeCodebaseModal.tsx` | UI | Folder selection modal |
+| `ui/src/components/research/ResearchProgressView.tsx` | UI | Real-time progress display |
+| `ui/src/components/research/ResearchResultsView.tsx` | UI | Documentation viewer with tabs |
+| `ui/src/components/research/MarkdownViewer.tsx` | UI | Markdown + syntax highlighting |
+| `ui/src/components/research/index.ts` | UI | Barrel exports |
+| `ui/src/hooks/useWebSocket.ts` | UI | research_update message handling |
+| `ui/src/lib/types.ts` | UI | Research TypeScript types |
 | `client.py` | Backend | Firefox + headless defaults, research MCP server |
 | `agent.py` | Backend | Research agent type handling |
 | `prompts.py` | Backend | Research prompt loading |
@@ -388,6 +559,7 @@ git checkout client.py .env.example
 | `api/pattern_analyzer.py` | API | Architecture pattern analysis |
 | `api/convention_extractor.py` | API | Code convention extraction |
 | `server/routers/agent.py` | Server | Research REST endpoints |
+| `server/routers/projects.py` | Server | GET /research-docs endpoint |
 | `server/services/process_manager.py` | Server | Research process manager |
 | `server/websocket.py` | Server | Research WebSocket tracking |
 | `server/schemas.py` | Server | Research Pydantic schemas |
@@ -403,6 +575,7 @@ git checkout client.py .env.example
 **Date:** January 2026
 **Features:**
 - Research Agent (AutoCoder Plus) - Analyze existing codebases
+- Research Agent UI - Full browser-based flow for codebase analysis
 - Twitter-style UI theme with custom theme override system
 - Firefox + headless Playwright defaults
 

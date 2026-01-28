@@ -12,6 +12,8 @@ import type {
   AgentLogEntry,
   OrchestratorStatus,
   OrchestratorEvent,
+  ResearchPhase,
+  ResearchLogEntry,
 } from '../lib/types'
 
 // Activity item for the feed
@@ -27,6 +29,17 @@ interface CelebrationTrigger {
   agentName: AgentMascot | 'Unknown'
   featureName: string
   featureId: number
+}
+
+// Research agent state
+interface ResearchState {
+  phase: ResearchPhase
+  filesScanned: number
+  findingsCount: number
+  finalized: boolean
+  currentTool: string | null
+  filesWritten: string[]
+  logs: ResearchLogEntry[]
 }
 
 interface WebSocketState {
@@ -52,11 +65,14 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Research agent state
+  researchState: ResearchState | null
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
 const MAX_ACTIVITY = 20 // Keep last 20 activity items
 const MAX_AGENT_LOGS = 500 // Keep last 500 log lines per agent
+const MAX_RESEARCH_LOGS = 100 // Keep last 100 research log entries
 
 export function useProjectWebSocket(projectName: string | null) {
   const [state, setState] = useState<WebSocketState>({
@@ -73,6 +89,7 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    researchState: null,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -327,6 +344,31 @@ export function useProjectWebSocket(projectName: string | null) {
             case 'pong':
               // Heartbeat response
               break
+
+            case 'research_update':
+              setState(prev => {
+                const newLogEntry: ResearchLogEntry = {
+                  message: message.message,
+                  timestamp: message.timestamp,
+                  eventType: message.eventType,
+                }
+
+                const existingLogs = prev.researchState?.logs ?? []
+
+                return {
+                  ...prev,
+                  researchState: {
+                    phase: message.phase,
+                    filesScanned: message.filesScanned,
+                    findingsCount: message.findingsCount,
+                    finalized: message.finalized,
+                    currentTool: message.currentTool,
+                    filesWritten: message.filesWritten,
+                    logs: [...existingLogs.slice(-MAX_RESEARCH_LOGS + 1), newLogEntry],
+                  },
+                }
+              })
+              break
           }
         } catch {
           console.error('Failed to parse WebSocket message')
@@ -392,6 +434,7 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      researchState: null,
     })
 
     if (!projectName) {
@@ -465,6 +508,11 @@ export function useProjectWebSocket(projectName: string | null) {
     })
   }, [])
 
+  // Clear research state
+  const clearResearchState = useCallback(() => {
+    setState(prev => ({ ...prev, researchState: null }))
+  }, [])
+
   return {
     ...state,
     clearLogs,
@@ -472,5 +520,6 @@ export function useProjectWebSocket(projectName: string | null) {
     clearCelebration,
     getAgentLogs,
     clearAgentLogs,
+    clearResearchState,
   }
 }

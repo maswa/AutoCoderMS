@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Routes, Route, useParams } from 'react-router-dom'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
@@ -26,6 +27,7 @@ import { ViewToggle, type ViewMode } from './components/ViewToggle'
 import { DependencyGraph } from './components/DependencyGraph'
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
+import { ResearchProgressView, ResearchResultsView } from './components/research'
 import { getDependencyGraph } from './lib/api'
 import { Loader2, Settings, Moon, Sun } from 'lucide-react'
 import type { Feature } from './lib/types'
@@ -35,6 +37,37 @@ import { Badge } from '@/components/ui/badge'
 
 const STORAGE_KEY = 'autocoder-selected-project'
 const VIEW_MODE_KEY = 'autocoder-view-mode'
+
+// Wrapper component for ResearchProgressView that extracts route params
+function ResearchProgressRoute() {
+  const { projectName } = useParams<{ projectName: string }>()
+  if (!projectName) return null
+  return <ResearchProgressView projectName={projectName} />
+}
+
+// Wrapper component for ResearchResultsView that extracts route params and provides handlers
+function ResearchResultsRoute() {
+  const { projectName } = useParams<{ projectName: string }>()
+  if (!projectName) return null
+
+  const handleConvertToSpec = () => {
+    // Navigate to spec creation - will be implemented when spec creation is ready
+    console.log('Convert to spec for:', projectName)
+    window.location.href = '/'
+  }
+
+  const handleBack = () => {
+    window.history.back()
+  }
+
+  return (
+    <ResearchResultsView
+      projectName={projectName}
+      onConvertToSpec={handleConvertToSpec}
+      onBack={handleBack}
+    />
+  )
+}
 
 function App() {
   // Initialize selected project from localStorage
@@ -240,6 +273,13 @@ function App() {
   }
 
   return (
+    <Routes>
+      {/* Research routes */}
+      <Route path="/research/:projectName" element={<ResearchProgressRoute />} />
+      <Route path="/research/:projectName/results" element={<ResearchResultsRoute />} />
+
+      {/* Main dashboard route */}
+      <Route path="*" element={
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-card text-foreground border-b-2 border-border">
@@ -517,6 +557,8 @@ function App() {
         />
       )}
     </div>
+      } />
+    </Routes>
   )
 }
 
