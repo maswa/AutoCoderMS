@@ -8,7 +8,8 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 
 1. [UI Theme Customization](#1-ui-theme-customization)
 2. [Playwright Browser Configuration](#2-playwright-browser-configuration)
-3. [Update Checklist](#update-checklist)
+3. [Research Agent (AutoCoder Plus)](#3-research-agent-autocoder-plus)
+4. [Update Checklist](#update-checklist)
 
 ---
 
@@ -174,7 +175,149 @@ playwright_args = [
 
 ---
 
-## 3. Update Checklist
+## 3. Research Agent (AutoCoder Plus)
+
+### Overview
+
+Added a new **Research Agent** that analyzes existing codebases and generates documentation. This enables AutoCoder to work with existing projects, not just create new ones from scratch.
+
+**Workflow:**
+```
+1. /gsd:map-codebase        → Analyzes existing codebase
+2. Output: .planning/codebase/*.md  (STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS)
+3. /gsd-to-autocoder-spec   → Converts to app_spec.txt
+4. AutoCoder                → Continues development on existing code
+```
+
+### New Files Created
+
+#### MCP Server & Database
+
+| File | Purpose |
+|------|---------|
+| `mcp_server/research_mcp.py` | MCP server with 6 research tools |
+| `api/research_database.py` | SQLAlchemy models for research state |
+| `api/stack_detector.py` | Technology stack detection (70+ frameworks) |
+| `api/pattern_analyzer.py` | Architecture pattern analysis |
+| `api/convention_extractor.py` | Code convention extraction |
+
+#### Commands & Skills
+
+| File | Purpose |
+|------|---------|
+| `.claude/commands/gsd-map-codebase.md` | Slash command for research |
+| `.claude/skills/gsd-map-codebase/SKILL.md` | Skill definition |
+| `.claude/templates/research_prompt.template.md` | Research agent prompt |
+
+### Modified Files
+
+#### `client.py`
+
+**Added research MCP server configuration:**
+```python
+RESEARCH_MCP_TOOLS = [
+    "mcp__research__research_scan_files",
+    "mcp__research__research_detect_stack",
+    "mcp__research__research_add_finding",
+    "mcp__research__research_get_context",
+    "mcp__research__research_finalize",
+    "mcp__research__research_get_stats",
+]
+
+# In create_client():
+if agent_type == "research":
+    mcp_servers = {
+        "research": {
+            "command": sys.executable,
+            "args": ["-m", "mcp_server.research_mcp"],
+            "env": {"PROJECT_DIR": str(project_dir.resolve())},
+        },
+    }
+```
+
+#### `agent.py`
+
+**Added research agent type handling:**
+```python
+elif agent_type == "research":
+    print("Running as RESEARCH agent (codebase analysis)")
+    prompt = get_research_prompt(project_dir)
+```
+
+**Fixed:** Added `agent_type=agent_type` to `create_client()` call.
+
+#### `prompts.py`
+
+**Added research prompt loading:**
+```python
+def get_research_prompt(project_dir: Path | None = None) -> str:
+    return load_prompt("research_prompt", project_dir)
+```
+
+#### `autonomous_agent_demo.py`
+
+**Added "research" to CLI arguments:**
+```python
+choices=["initializer", "coding", "testing", "research"]
+```
+
+#### Server Files
+
+| File | Changes |
+|------|---------|
+| `server/routers/agent.py` | Added `/start-research`, `/research/status`, `/research/stop` endpoints |
+| `server/services/process_manager.py` | Added `ResearchAgentProcessManager` class and `start_research()` method |
+| `server/websocket.py` | Added `ResearchTracker` class for real-time progress updates |
+| `server/schemas.py` | Added `ResearchStatus`, `WSResearchUpdateMessage` schemas |
+
+### Research MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `research_scan_files(pattern, limit)` | Scan files matching glob pattern |
+| `research_detect_stack()` | Auto-detect technology stack from manifests |
+| `research_add_finding(document, section, content, source_files)` | Add finding to document |
+| `research_get_context(document)` | Get current document state |
+| `research_finalize()` | Write final markdown files |
+| `research_get_stats()` | Get progress statistics |
+
+### Output Structure
+
+```
+{project}/.planning/
+├── research.db              # SQLite database (temporary)
+└── codebase/
+    ├── STACK.md             # Languages, frameworks, dependencies
+    ├── ARCHITECTURE.md      # Patterns, layers, data flow
+    ├── STRUCTURE.md         # Directory layout
+    ├── CONVENTIONS.md       # Code style, naming
+    └── INTEGRATIONS.md      # APIs, databases, services
+```
+
+### Usage
+
+**CLI:**
+```bash
+python autonomous_agent_demo.py --project-dir /path/to/project --agent-type research
+```
+
+**Claude Code:**
+```
+/gsd:map-codebase
+```
+
+**After research completes:**
+```
+/gsd-to-autocoder-spec
+```
+
+### Branch
+
+All changes are on branch: `feature/research-agent`
+
+---
+
+## 4. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
@@ -186,11 +329,29 @@ When updating AutoCoder from upstream, verify these items:
 
 ### Backend Changes
 - [ ] `client.py` - Playwright browser/headless defaults preserved
+- [ ] `client.py` - Research MCP server configuration preserved
+- [ ] `agent.py` - Research agent type handling preserved
+- [ ] `prompts.py` - Research prompt loading preserved
 - [ ] `.env.example` - Documentation updates preserved
+
+### Research Agent Files (new)
+- [ ] `mcp_server/research_mcp.py` - Research MCP server
+- [ ] `api/research_database.py` - Research SQLAlchemy models
+- [ ] `api/stack_detector.py` - Stack detection utility
+- [ ] `api/pattern_analyzer.py` - Pattern analysis utility
+- [ ] `api/convention_extractor.py` - Convention extraction utility
+- [ ] `.claude/templates/research_prompt.template.md` - Research prompt
+- [ ] `.claude/commands/gsd-map-codebase.md` - Slash command
+- [ ] `.claude/skills/gsd-map-codebase/SKILL.md` - Skill definition
+- [ ] `server/routers/agent.py` - Research endpoints
+- [ ] `server/services/process_manager.py` - Research process manager
+- [ ] `server/websocket.py` - Research progress tracking
+- [ ] `server/schemas.py` - Research schemas
 
 ### General
 - [ ] Verify Playwright uses Firefox by default
 - [ ] Check that browser runs headless by default
+- [ ] Test research agent: `python autonomous_agent_demo.py --project-dir test --agent-type research`
 
 ---
 
@@ -217,7 +378,22 @@ git checkout client.py .env.example
 | `ui/src/styles/custom-theme.css` | UI | Twitter-style theme |
 | `ui/src/components/KanbanColumn.tsx` | UI | Themeable kanban columns |
 | `ui/src/main.tsx` | UI | Imports custom theme |
-| `client.py` | Backend | Firefox + headless defaults |
+| `client.py` | Backend | Firefox + headless defaults, research MCP server |
+| `agent.py` | Backend | Research agent type handling |
+| `prompts.py` | Backend | Research prompt loading |
+| `autonomous_agent_demo.py` | Backend | Research CLI argument |
+| `mcp_server/research_mcp.py` | MCP | Research MCP server (6 tools) |
+| `api/research_database.py` | API | Research SQLAlchemy models |
+| `api/stack_detector.py` | API | Technology stack detection |
+| `api/pattern_analyzer.py` | API | Architecture pattern analysis |
+| `api/convention_extractor.py` | API | Code convention extraction |
+| `server/routers/agent.py` | Server | Research REST endpoints |
+| `server/services/process_manager.py` | Server | Research process manager |
+| `server/websocket.py` | Server | Research WebSocket tracking |
+| `server/schemas.py` | Server | Research Pydantic schemas |
+| `.claude/templates/research_prompt.template.md` | Prompt | Research agent prompt |
+| `.claude/commands/gsd-map-codebase.md` | Command | /gsd:map-codebase |
+| `.claude/skills/gsd-map-codebase/SKILL.md` | Skill | Research skill definition |
 | `.env.example` | Config | Updated documentation |
 
 ---
@@ -225,4 +401,9 @@ git checkout client.py .env.example
 ## Last Updated
 
 **Date:** January 2026
-**PR:** #93 - Twitter-style UI theme with custom theme override system
+**Features:**
+- Research Agent (AutoCoder Plus) - Analyze existing codebases
+- Twitter-style UI theme with custom theme override system
+- Firefox + headless Playwright defaults
+
+**Branch:** `feature/research-agent`
