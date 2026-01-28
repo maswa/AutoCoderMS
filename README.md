@@ -13,8 +13,6 @@ A long-running autonomous coding agent powered by the Claude Agent SDK. This too
 | **Research Agent** | Analyze existing codebases and generate documentation before coding |
 | **Smart Testing Mode** | Skip Playwright browser for API features to reduce overhead |
 | **Git Branch Safety** | Protected branch warnings and new branch creation before coding |
-| **UI Themes** | 5 themes: Twitter, Claude, Neo Brutalism, Retro Arcade, Aurora |
-| **YOLO Mode** | Skip all testing for rapid prototyping |
 
 See [CUSTOM_UPDATES.md](CUSTOM_UPDATES.md) for detailed documentation of all additions.
 
