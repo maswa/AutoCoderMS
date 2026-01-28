@@ -31,6 +31,9 @@ import type {
   ScheduleUpdate,
   ScheduleListResponse,
   NextRunResponse,
+  BranchListResponse,
+  CheckoutResponse,
+  CreateBranchResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -497,4 +500,36 @@ export async function deleteSchedule(
 
 export async function getNextScheduledRun(projectName: string): Promise<NextRunResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/next`)
+}
+
+// ============================================================================
+// Git API
+// ============================================================================
+
+export async function listBranches(projectName: string): Promise<BranchListResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/git/branches`)
+}
+
+export async function checkoutBranch(
+  projectName: string,
+  branch: string
+): Promise<CheckoutResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/git/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({ branch }),
+  })
+}
+
+export async function createBranch(
+  projectName: string,
+  branchName: string,
+  fromBranch?: string
+): Promise<CreateBranchResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/git/create-branch`, {
+    method: 'POST',
+    body: JSON.stringify({
+      branch_name: branchName,
+      from_branch: fromBranch,
+    }),
+  })
 }

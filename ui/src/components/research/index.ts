@@ -6,6 +6,7 @@
  */
 
 export { AnalyzeCodebaseModal } from './AnalyzeCodebaseModal'
+export { BranchSelectionModal } from './BranchSelectionModal'
 export { ResearchProgressView } from './ResearchProgressView'
 export { ResearchResultsView } from './ResearchResultsView'
 export { MarkdownViewer } from './MarkdownViewer'

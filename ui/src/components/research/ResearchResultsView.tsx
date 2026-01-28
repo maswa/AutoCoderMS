@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { MarkdownViewer } from './MarkdownViewer'
+import { BranchSelectionModal } from './BranchSelectionModal'
 import { cn } from '@/lib/utils'
 import type { ResearchDocsResponse } from '@/lib/types'
 
@@ -175,6 +176,19 @@ export function ResearchResultsView({
 }: ResearchResultsViewProps) {
   const [activeTab, setActiveTab] = useState<string>(DOC_TABS[0].filename)
   const [copiedDoc, setCopiedDoc] = useState<string | null>(null)
+  const [showBranchModal, setShowBranchModal] = useState(false)
+
+  // Handle the convert button click - show branch selection first
+  const handleConvertClick = () => {
+    setShowBranchModal(true)
+  }
+
+  // Handle branch selection completion
+  const handleBranchSelected = () => {
+    setShowBranchModal(false)
+    // Proceed with conversion after branch is selected
+    onConvertToSpec()
+  }
 
   // Fetch research documents
   const {
@@ -263,7 +277,7 @@ export function ResearchResultsView({
           </div>
         </div>
 
-        <Button onClick={onConvertToSpec} className="gap-2">
+        <Button onClick={handleConvertClick} className="gap-2">
           Convert to AutoCoder Spec
           <ArrowRight size={16} />
         </Button>
@@ -399,7 +413,7 @@ export function ResearchResultsView({
                   Convert this analysis into an AutoCoder specification to begin autonomous development.
                 </p>
               </div>
-              <Button onClick={onConvertToSpec} size="lg" className="gap-2 shrink-0">
+              <Button onClick={handleConvertClick} size="lg" className="gap-2 shrink-0">
                 Convert to Spec
                 <ArrowRight size={18} />
               </Button>
@@ -417,6 +431,14 @@ export function ResearchResultsView({
           </Button>
         </div>
       )}
+
+      {/* Branch Selection Modal */}
+      <BranchSelectionModal
+        isOpen={showBranchModal}
+        onClose={() => setShowBranchModal(false)}
+        projectName={projectName}
+        onBranchSelected={handleBranchSelected}
+      />
     </div>
   )
 }

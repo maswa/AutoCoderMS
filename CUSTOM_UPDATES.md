@@ -10,7 +10,8 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 2. [Playwright Browser Configuration](#2-playwright-browser-configuration)
 3. [Research Agent (AutoCoder Plus)](#3-research-agent-autocoder-plus)
 4. [Research Agent UI Integration](#4-research-agent-ui-integration)
-5. [Update Checklist](#update-checklist)
+5. [Git Branch Safety](#5-git-branch-safety)
+6. [Update Checklist](#update-checklist)
 
 ---
 
@@ -464,10 +465,65 @@ async def get_research_docs(name: str):
 - **Tab Navigation**: 5 tabs for STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS
 - **Theme Compatible**: Works with all 5 themes (Twitter, Claude, Neo Brutalism, Retro Arcade, Aurora)
 - **Responsive Design**: Mobile-friendly layout
+- **Branch Selection**: Safety modal before coding starts (see Section 5)
 
 ---
 
-## 5. Update Checklist
+## 5. Git Branch Safety
+
+### Overview
+
+Added branch selection step before AutoCoder starts coding on existing projects. This prevents accidental direct commits to main/master branches.
+
+**Flow:**
+```
+Research Results → "Convert to Spec" → Branch Selection Modal → Coding
+```
+
+### Safety Features
+
+1. **Protected branch detection**: main, master, develop, production marked with 🔒
+2. **Warning on protected branches**: Extra confirmation if user wants to work on main/master
+3. **New branch suggestion**: Suggests `autocoder/{project-name}` pattern
+4. **Uncommitted changes warning**: Alerts user but doesn't block
+5. **Non-git repo handling**: Allows continuing without git
+
+### New Backend Endpoints
+
+**File:** `server/routers/git.py`
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/{project}/git/branches` | GET | List all branches with protection info |
+| `/{project}/git/checkout` | POST | Switch to existing branch |
+| `/{project}/git/create-branch` | POST | Create new branch and switch |
+
+### New UI Component
+
+**File:** `ui/src/components/research/BranchSelectionModal.tsx`
+
+Features:
+- Radio group with 3 options: Create new / Use existing / Continue current
+- Branch name validation
+- Loading states during git operations
+- Error handling for edge cases
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `server/routers/git.py` | NEW - Git management endpoints |
+| `server/routers/__init__.py` | Added git_router export |
+| `server/main.py` | Registered git router |
+| `ui/src/lib/api.ts` | Added listBranches, checkoutBranch, createBranch |
+| `ui/src/lib/types.ts` | Added GitBranch, BranchListResponse, etc. |
+| `ui/src/components/research/BranchSelectionModal.tsx` | NEW - Branch selection modal |
+| `ui/src/components/research/ResearchResultsView.tsx` | Integrated branch modal |
+| `ui/src/App.tsx` | Updated navigation after branch selection |
+
+---
+
+## 6. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
@@ -487,7 +543,15 @@ When updating AutoCoder from upstream, verify these items:
 - [ ] `ui/src/components/ProjectSelector.tsx` - Analyze button preserved
 - [ ] `ui/src/hooks/useWebSocket.ts` - research_update handling preserved
 - [ ] `ui/src/lib/types.ts` - Research types preserved
+- [ ] `ui/src/components/research/BranchSelectionModal.tsx` - Branch selector
 - [ ] Run `npm run build` in `ui/` directory
+
+### Git Branch Safety (new)
+- [ ] `server/routers/git.py` - Git management endpoints
+- [ ] `server/routers/__init__.py` - git_router export
+- [ ] `server/main.py` - git router registration
+- [ ] `ui/src/lib/api.ts` - Git API functions preserved
+- [ ] `ui/src/lib/types.ts` - Git types preserved
 
 ### Backend Changes
 - [ ] `client.py` - Playwright browser/headless defaults preserved
@@ -547,8 +611,10 @@ git checkout client.py .env.example
 | `ui/src/components/research/ResearchResultsView.tsx` | UI | Documentation viewer with tabs |
 | `ui/src/components/research/MarkdownViewer.tsx` | UI | Markdown + syntax highlighting |
 | `ui/src/components/research/index.ts` | UI | Barrel exports |
+| `ui/src/components/research/BranchSelectionModal.tsx` | UI | Git branch selection modal |
 | `ui/src/hooks/useWebSocket.ts` | UI | research_update message handling |
-| `ui/src/lib/types.ts` | UI | Research TypeScript types |
+| `ui/src/lib/types.ts` | UI | Research + Git TypeScript types |
+| `server/routers/git.py` | Server | Git branch management endpoints |
 | `client.py` | Backend | Firefox + headless defaults, research MCP server |
 | `agent.py` | Backend | Research agent type handling |
 | `prompts.py` | Backend | Research prompt loading |
@@ -576,6 +642,7 @@ git checkout client.py .env.example
 **Features:**
 - Research Agent (AutoCoder Plus) - Analyze existing codebases
 - Research Agent UI - Full browser-based flow for codebase analysis
+- Git Branch Safety - Protected branch warnings, new branch creation before coding
 - Twitter-style UI theme with custom theme override system
 - Firefox + headless Playwright defaults
 

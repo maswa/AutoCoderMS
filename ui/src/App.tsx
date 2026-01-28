@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Routes, Route, useParams } from 'react-router-dom'
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
@@ -48,16 +48,23 @@ function ResearchProgressRoute() {
 // Wrapper component for ResearchResultsView that extracts route params and provides handlers
 function ResearchResultsRoute() {
   const { projectName } = useParams<{ projectName: string }>()
+  const navigate = useNavigate()
+
   if (!projectName) return null
 
   const handleConvertToSpec = () => {
-    // Navigate to spec creation - will be implemented when spec creation is ready
-    console.log('Convert to spec for:', projectName)
-    window.location.href = '/'
+    // Store the selected project in localStorage so the dashboard picks it up
+    try {
+      localStorage.setItem(STORAGE_KEY, projectName)
+    } catch {
+      // localStorage not available
+    }
+    // Navigate to the main dashboard which will show the project with spec creation
+    navigate('/', { replace: true })
   }
 
   const handleBack = () => {
-    window.history.back()
+    navigate(-1)
   }
 
   return (

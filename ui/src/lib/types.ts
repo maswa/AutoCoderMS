@@ -645,3 +645,34 @@ export interface ResearchProject {
   findingsCount: number
   completedAt?: string
 }
+
+// ============================================================================
+// Git Types
+// ============================================================================
+
+export interface GitBranch {
+  name: string
+  is_current: boolean
+  is_protected: boolean
+}
+
+export interface BranchListResponse {
+  is_git_repo: boolean
+  current_branch: string
+  branches: GitBranch[]
+  protected_branches: string[]
+  has_uncommitted_changes?: boolean
+}
+
+export interface CheckoutResponse {
+  success: boolean
+  previous_branch: string
+  current_branch: string
+  error?: string
+}
+
+export interface CreateBranchResponse {
+  success: boolean
+  branch: string
+  error?: string
+}
