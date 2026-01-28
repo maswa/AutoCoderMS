@@ -33,11 +33,11 @@ def _get_project_path(project_name: str) -> Path | None:
     return get_project_path(project_name)
 
 
-def _get_settings_defaults() -> tuple[bool, str, int]:
+def _get_settings_defaults() -> tuple[bool, str, int, str]:
     """Get defaults from global settings.
 
     Returns:
-        Tuple of (yolo_mode, model, testing_agent_ratio)
+        Tuple of (yolo_mode, model, testing_agent_ratio, testing_mode)
     """
     import sys
     root = Path(__file__).parent.parent.parent
@@ -56,7 +56,10 @@ def _get_settings_defaults() -> tuple[bool, str, int]:
     except (ValueError, TypeError):
         testing_agent_ratio = 1
 
-    return yolo_mode, model, testing_agent_ratio
+    # Get testing mode (full, smart, minimal, off)
+    testing_mode = settings.get("testing_mode", "full")
+
+    return yolo_mode, model, testing_agent_ratio, testing_mode
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
@@ -106,6 +109,7 @@ async def get_agent_status(project_name: str):
         parallel_mode=manager.parallel_mode,
         max_concurrency=manager.max_concurrency,
         testing_agent_ratio=manager.testing_agent_ratio,
+        testing_mode=getattr(manager, 'testing_mode', 'full'),
     )
 
 
@@ -118,18 +122,20 @@ async def start_agent(
     manager = get_project_manager(project_name)
 
     # Get defaults from global settings if not provided in request
-    default_yolo, default_model, default_testing_ratio = _get_settings_defaults()
+    default_yolo, default_model, default_testing_ratio, default_testing_mode = _get_settings_defaults()
 
     yolo_mode = request.yolo_mode if request.yolo_mode is not None else default_yolo
     model = request.model if request.model else default_model
     max_concurrency = request.max_concurrency or 1
     testing_agent_ratio = request.testing_agent_ratio if request.testing_agent_ratio is not None else default_testing_ratio
+    testing_mode = request.testing_mode if request.testing_mode else default_testing_mode
 
     success, message = await manager.start(
         yolo_mode=yolo_mode,
         model=model,
         max_concurrency=max_concurrency,
         testing_agent_ratio=testing_agent_ratio,
+        testing_mode=testing_mode,
     )
 
     # Notify scheduler of manual start (to prevent auto-stop during scheduled window)
@@ -307,8 +313,46 @@ async def start_research_agent(
     The research agent analyzes the codebase structure and documents findings
     in the .planning/codebase/ directory. This is typically run before adding
     new features to an existing codebase.
+
+    If project_dir is provided and the project is not yet registered,
+    it will be automatically registered with the given directory.
     """
-    manager = get_research_project_manager(project_name)
+    # Check if project exists in registry
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        # Project not in registry - try to register it with provided project_dir
+        if not request.project_dir:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Project '{project_name}' not found in registry. "
+                       "Please provide project_dir to register it."
+            )
+
+        # Register the project
+        import sys
+        root = Path(__file__).parent.parent.parent
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from registry import register_project
+
+        project_path = Path(request.project_dir)
+        if not project_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Project directory does not exist: {request.project_dir}"
+            )
+
+        try:
+            register_project(project_name, project_path)
+            project_dir = project_path
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project directory not found: {project_dir}")
+
+    manager = get_research_manager(project_name, project_dir, ROOT_DIR)
 
     # Get default model from global settings if not provided
     _, default_model, _ = _get_settings_defaults()

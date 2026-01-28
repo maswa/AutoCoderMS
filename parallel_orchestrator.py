@@ -142,6 +142,7 @@ class ParallelOrchestrator:
         model: str = None,
         yolo_mode: bool = False,
         testing_agent_ratio: int = 1,
+        testing_mode: str = "full",
         on_output: Callable[[int, str], None] = None,
         on_status: Callable[[int, str], None] = None,
     ):
@@ -155,6 +156,7 @@ class ParallelOrchestrator:
             yolo_mode: Whether to run in YOLO mode (skip testing agents entirely)
             testing_agent_ratio: Number of regression testing agents to maintain (0-3).
                 0 = disabled, 1-3 = maintain that many testing agents running independently.
+            testing_mode: Testing mode - full (always Playwright) or smart (UI only)
             on_output: Callback for agent output (feature_id, line)
             on_status: Callback for agent status changes (feature_id, status)
         """
@@ -163,6 +165,7 @@ class ParallelOrchestrator:
         self.model = model
         self.yolo_mode = yolo_mode
         self.testing_agent_ratio = min(max(testing_agent_ratio, 0), 3)  # Clamp 0-3
+        self.testing_mode = testing_mode
         self.on_output = on_output
         self.on_status = on_status
 
@@ -497,6 +500,7 @@ class ParallelOrchestrator:
             "--max-iterations", "1",
             "--agent-type", "coding",
             "--feature-id", str(feature_id),
+            "--testing-mode", self.testing_mode,
         ]
         if self.model:
             cmd.extend(["--model", self.model])
@@ -1138,6 +1142,7 @@ async def run_parallel_orchestrator(
     model: str = None,
     yolo_mode: bool = False,
     testing_agent_ratio: int = 1,
+    testing_mode: str = "full",
 ) -> None:
     """Run the unified orchestrator.
 
@@ -1147,14 +1152,16 @@ async def run_parallel_orchestrator(
         model: Claude model to use
         yolo_mode: Whether to run in YOLO mode (skip testing agents)
         testing_agent_ratio: Number of regression agents to maintain (0-3)
+        testing_mode: Testing mode - full or smart
     """
-    print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}", flush=True)
+    print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}, testing_mode={testing_mode}", flush=True)
     orchestrator = ParallelOrchestrator(
         project_dir=project_dir,
         max_concurrency=max_concurrency,
         model=model,
         yolo_mode=yolo_mode,
         testing_agent_ratio=testing_agent_ratio,
+        testing_mode=testing_mode,
     )
 
     try:
@@ -1208,6 +1215,13 @@ def main():
         default=1,
         help="Number of regression testing agents (0-3, default: 1). Set to 0 to disable testing agents.",
     )
+    parser.add_argument(
+        "--testing-mode",
+        type=str,
+        default="full",
+        choices=["full", "smart", "minimal", "off"],
+        help="Testing mode: full (always Playwright), smart (Playwright for UI only), minimal (no Playwright), off (no testing)",
+    )
 
     args = parser.parse_args()
 
@@ -1234,6 +1248,7 @@ def main():
             model=args.model,
             yolo_mode=args.yolo,
             testing_agent_ratio=args.testing_agent_ratio,
+            testing_mode=args.testing_mode,
         ))
     except KeyboardInterrupt:
         print("\n\nInterrupted by user", flush=True)

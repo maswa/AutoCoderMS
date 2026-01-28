@@ -11,7 +11,8 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 3. [Research Agent (AutoCoder Plus)](#3-research-agent-autocoder-plus)
 4. [Research Agent UI Integration](#4-research-agent-ui-integration)
 5. [Git Branch Safety](#5-git-branch-safety)
-6. [Update Checklist](#update-checklist)
+6. [Smart Testing Mode](#6-smart-testing-mode)
+7. [Update Checklist](#update-checklist)
 
 ---
 
@@ -523,7 +524,82 @@ Features:
 
 ---
 
-## 6. Update Checklist
+## 6. Smart Testing Mode
+
+### Overview
+
+Added a **Smart Testing Mode** setting that controls when Playwright browser is used for testing. This reduces overhead by skipping browser automation for API/backend features that don't need it.
+
+**Modes:**
+| Mode | Description |
+|------|-------------|
+| **Full** | Always use Playwright browser for all features (default) |
+| **Smart** | Use Playwright only for UI features, skip for API/backend features |
+
+**Note:** YOLO mode (existing setting) disables all testing including Playwright.
+
+### How Smart Mode Works
+
+The `should_use_playwright()` function in `client.py` checks the feature category:
+
+```python
+# API/backend features → No Playwright
+api_keywords = ["api", "backend", "database", "db", "server", "endpoint", "service"]
+
+# UI features → Use Playwright
+ui_keywords = ["ui", "frontend", "component", "page", "view", "screen", "button", "form"]
+
+# Unknown category → Default to Playwright (safe)
+```
+
+### Modified Files
+
+#### Backend
+
+| File | Changes |
+|------|---------|
+| `server/schemas.py` | Added `VALID_TESTING_MODES`, `testing_mode` field to schemas |
+| `server/routers/settings.py` | Get/set `testing_mode` setting |
+| `server/routers/agent.py` | Pass `testing_mode` to process manager |
+| `server/services/process_manager.py` | Pass `--testing-mode` to agent subprocess |
+| `parallel_orchestrator.py` | Propagate `testing_mode` to spawned agents |
+| `autonomous_agent_demo.py` | Added `--testing-mode` CLI argument |
+| `agent.py` | Lookup feature category for smart mode decisions |
+| `client.py` | Added `should_use_playwright()` function |
+
+#### Frontend
+
+| File | Changes |
+|------|---------|
+| `ui/src/lib/types.ts` | Added `testing_mode` to Settings types |
+| `ui/src/hooks/useProjects.ts` | Added `testing_mode` default value |
+| `ui/src/components/SettingsModal.tsx` | Added Full/Smart toggle UI |
+
+### Settings UI
+
+The Settings modal now includes a "Browser Testing" toggle:
+- Compact button group (same style as Model selector)
+- Shows description: "All features" or "UI features only"
+- Disabled when YOLO mode is on (YOLO already skips all testing)
+
+### Usage
+
+**UI:** Settings → Browser Testing → Full/Smart
+
+**CLI:**
+```bash
+python autonomous_agent_demo.py --project-dir myapp --testing-mode smart
+```
+
+### Performance Impact
+
+- **Playwright MCP server** spawns a browser process (~100-300MB RAM per agent)
+- **Smart mode** skips this for API features, reducing memory usage
+- **Full mode** is safer but uses more resources
+
+---
+
+## 7. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
@@ -574,10 +650,24 @@ When updating AutoCoder from upstream, verify these items:
 - [ ] `server/websocket.py` - Research progress tracking
 - [ ] `server/schemas.py` - Research schemas
 
+### Smart Testing Mode (new)
+- [ ] `server/schemas.py` - VALID_TESTING_MODES and testing_mode fields
+- [ ] `server/routers/settings.py` - testing_mode get/set
+- [ ] `server/routers/agent.py` - testing_mode passed to process manager
+- [ ] `server/services/process_manager.py` - --testing-mode CLI arg
+- [ ] `parallel_orchestrator.py` - testing_mode propagation
+- [ ] `autonomous_agent_demo.py` - --testing-mode argument
+- [ ] `agent.py` - feature category lookup for smart mode
+- [ ] `client.py` - should_use_playwright() function
+- [ ] `ui/src/lib/types.ts` - testing_mode in Settings
+- [ ] `ui/src/hooks/useProjects.ts` - testing_mode default
+- [ ] `ui/src/components/SettingsModal.tsx` - Browser Testing toggle
+
 ### General
 - [ ] Verify Playwright uses Firefox by default
 - [ ] Check that browser runs headless by default
 - [ ] Test research agent: `python autonomous_agent_demo.py --project-dir test --agent-type research`
+- [ ] Test smart testing mode: Settings → Browser Testing → Smart
 
 ---
 
@@ -643,6 +733,7 @@ git checkout client.py .env.example
 - Research Agent (AutoCoder Plus) - Analyze existing codebases
 - Research Agent UI - Full browser-based flow for codebase analysis
 - Git Branch Safety - Protected branch warnings, new branch creation before coding
+- Smart Testing Mode - Skip Playwright for API features to reduce overhead
 - Twitter-style UI theme with custom theme override system
 - Firefox + headless Playwright defaults
 

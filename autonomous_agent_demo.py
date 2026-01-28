@@ -156,6 +156,14 @@ Authentication:
         help="Testing agents per coding agent (0-3, default: 1). Set to 0 to disable testing agents.",
     )
 
+    parser.add_argument(
+        "--testing-mode",
+        type=str,
+        default="full",
+        choices=["full", "smart"],
+        help="Testing mode: full (always Playwright), smart (Playwright for UI only)",
+    )
+
     return parser.parse_args()
 
 
@@ -205,6 +213,7 @@ def main() -> None:
                     feature_id=args.feature_id,
                     agent_type=args.agent_type,
                     testing_feature_id=args.testing_feature_id,
+                    testing_mode=args.testing_mode,
                 )
             )
         else:
@@ -223,6 +232,7 @@ def main() -> None:
                     model=args.model,
                     yolo_mode=args.yolo,
                     testing_agent_ratio=args.testing_ratio,
+                    testing_mode=args.testing_mode,
                 )
             )
     except KeyboardInterrupt:
