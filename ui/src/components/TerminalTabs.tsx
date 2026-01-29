@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { TerminalInfo } from '@/lib/types'
+import { isSubmitEnter } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -96,7 +97,7 @@ export function TerminalTabs({
   // Handle key events during editing
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
+      if (isSubmitEnter(e, false)) {
         e.preventDefault()
         submitEdit()
       } else if (e.key === 'Escape') {

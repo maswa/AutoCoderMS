@@ -508,14 +508,20 @@ class ParallelOrchestrator:
             cmd.append("--yolo")
 
         try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                cwd=str(AUTOCODER_ROOT),
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            )
+            # CREATE_NO_WINDOW on Windows prevents console window pop-ups
+            # stdin=DEVNULL prevents blocking on stdin reads
+            popen_kwargs = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "cwd": str(AUTOCODER_ROOT),  # Run from autocoder root for proper imports
+                "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+            proc = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
             # Reset in_progress on failure
             session = self.get_session()
@@ -591,14 +597,20 @@ class ParallelOrchestrator:
                 cmd.extend(["--model", self.model])
 
             try:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    cwd=str(AUTOCODER_ROOT),
-                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
-                )
+                # CREATE_NO_WINDOW on Windows prevents console window pop-ups
+                # stdin=DEVNULL prevents blocking on stdin reads
+                popen_kwargs = {
+                    "stdin": subprocess.DEVNULL,
+                    "stdout": subprocess.PIPE,
+                    "stderr": subprocess.STDOUT,
+                    "text": True,
+                    "cwd": str(AUTOCODER_ROOT),
+                    "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+                }
+                if sys.platform == "win32":
+                    popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+                proc = subprocess.Popen(cmd, **popen_kwargs)
             except Exception as e:
                 debug_log.log("TESTING", f"FAILED to spawn testing agent: {e}")
                 return False, f"Failed to start testing agent: {e}"
@@ -642,14 +654,20 @@ class ParallelOrchestrator:
 
         print("Running initializer agent...", flush=True)
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=str(AUTOCODER_ROOT),
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
-        )
+        # CREATE_NO_WINDOW on Windows prevents console window pop-ups
+        # stdin=DEVNULL prevents blocking on stdin reads
+        popen_kwargs = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "cwd": str(AUTOCODER_ROOT),
+            "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        proc = subprocess.Popen(cmd, **popen_kwargs)
 
         debug_log.log("INIT", "Initializer subprocess started", pid=proc.pid)
 
@@ -707,6 +725,12 @@ class ParallelOrchestrator:
                     print(f"[Feature #{feature_id}] {line}", flush=True)
             proc.wait()
         finally:
+            # CRITICAL: Kill the process tree to clean up any child processes (e.g., Claude CLI)
+            # This prevents zombie processes from accumulating
+            try:
+                kill_process_tree(proc, timeout=2.0)
+            except Exception as e:
+                debug_log.log("CLEANUP", f"Error killing process tree for {agent_type} agent", error=str(e))
             self._on_agent_complete(feature_id, proc.returncode, agent_type, proc)
 
     def _signal_agent_completed(self):

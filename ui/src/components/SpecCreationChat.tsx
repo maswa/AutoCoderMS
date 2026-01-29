@@ -12,6 +12,7 @@ import { ChatMessage } from './ChatMessage'
 import { QuestionOptions } from './QuestionOptions'
 import { TypingIndicator } from './TypingIndicator'
 import type { ImageAttachment } from '../lib/types'
+import { isSubmitEnter } from '../lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
@@ -130,7 +131,7 @@ export function SpecCreationChat({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (isSubmitEnter(e)) {
       e.preventDefault()
       handleSendMessage()
     }

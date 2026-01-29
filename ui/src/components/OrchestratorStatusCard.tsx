@@ -36,7 +36,7 @@ function getStateColor(state: OrchestratorState): string {
     case 'complete':
       return 'text-primary'
     case 'spawning':
-      return 'text-violet-600 dark:text-violet-400'
+      return 'text-primary'
     case 'scheduling':
     case 'monitoring':
       return 'text-primary'
@@ -65,7 +65,7 @@ export function OrchestratorStatusCard({ status }: OrchestratorStatusCardProps) 
   const [showEvents, setShowEvents] = useState(false)
 
   return (
-    <Card className="mb-4 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 border-violet-200 dark:border-violet-800/50 py-4">
+    <Card className="mb-4 bg-primary/10 border-primary/30 py-4">
       <CardContent className="p-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}
@@ -75,7 +75,7 @@ export function OrchestratorStatusCard({ status }: OrchestratorStatusCardProps) 
           <div className="flex-1 min-w-0">
             {/* Header row */}
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-semibold text-lg text-violet-700 dark:text-violet-300">
+              <span className="font-semibold text-lg text-primary">
                 Maestro
               </span>
               <span className={`text-sm font-medium ${getStateColor(status.state)}`}>
@@ -124,7 +124,7 @@ export function OrchestratorStatusCard({ status }: OrchestratorStatusCardProps) 
               variant="ghost"
               size="sm"
               onClick={() => setShowEvents(!showEvents)}
-              className="text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/30"
+              className="text-primary hover:bg-primary/10"
             >
               <Sparkles size={12} />
               Activity
@@ -135,14 +135,14 @@ export function OrchestratorStatusCard({ status }: OrchestratorStatusCardProps) 
 
         {/* Collapsible recent events */}
         {showEvents && status.recentEvents.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-violet-200 dark:border-violet-800/50">
+          <div className="mt-3 pt-3 border-t border-primary/20">
             <div className="space-y-1.5">
               {status.recentEvents.map((event, idx) => (
                 <div
                   key={`${event.timestamp}-${idx}`}
                   className="flex items-start gap-2 text-xs"
                 >
-                  <span className="text-violet-500 dark:text-violet-400 shrink-0 font-mono">
+                  <span className="text-primary shrink-0 font-mono">
                     {formatRelativeTime(event.timestamp)}
                   </span>
                   <span className="text-foreground">

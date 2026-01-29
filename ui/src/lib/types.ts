@@ -15,6 +15,7 @@ export interface ProjectSummary {
   path: string
   has_spec: boolean
   stats: ProjectStats
+  default_concurrency: number
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -550,6 +551,10 @@ export interface SettingsUpdate {
   model?: string
   testing_agent_ratio?: number
   testing_mode?: string
+}
+
+export interface ProjectSettingsUpdate {
+  default_concurrency?: number
 }
 
 // ============================================================================

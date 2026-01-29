@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Square, Loader2, GitBranch, Clock } from 'lucide-react'
 import {
   useStartAgent,
   useStopAgent,
   useSettings,
+  useUpdateProjectSettings,
 } from '../hooks/useProjects'
 import { useNextScheduledRun } from '../hooks/useSchedules'
 import { formatNextRun, formatEndTime } from '../lib/timeUtils'
@@ -15,14 +16,47 @@ import { Badge } from '@/components/ui/badge'
 interface AgentControlProps {
   projectName: string
   status: AgentStatus
+  defaultConcurrency?: number
 }
 
-export function AgentControl({ projectName, status }: AgentControlProps) {
+export function AgentControl({ projectName, status, defaultConcurrency = 3 }: AgentControlProps) {
   const { data: settings } = useSettings()
   const yoloMode = settings?.yolo_mode ?? false
 
   // Concurrency: 1 = single agent, 2-5 = parallel
-  const [concurrency, setConcurrency] = useState(3)
+  const [concurrency, setConcurrency] = useState(defaultConcurrency)
+
+  // Sync concurrency when project changes or defaultConcurrency updates
+  useEffect(() => {
+    setConcurrency(defaultConcurrency)
+  }, [defaultConcurrency])
+
+  // Debounced save for concurrency changes
+  const updateProjectSettings = useUpdateProjectSettings(projectName)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleConcurrencyChange = useCallback((newConcurrency: number) => {
+    setConcurrency(newConcurrency)
+
+    // Clear previous timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    // Debounce save (500ms)
+    saveTimeoutRef.current = setTimeout(() => {
+      updateProjectSettings.mutate({ default_concurrency: newConcurrency })
+    }, 500)
+  }, [updateProjectSettings])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const startAgent = useStartAgent(projectName)
   const stopAgent = useStopAgent(projectName)
@@ -57,7 +91,7 @@ export function AgentControl({ projectName, status }: AgentControlProps) {
               min={1}
               max={5}
               value={concurrency}
-              onChange={(e) => setConcurrency(Number(e.target.value))}
+              onChange={(e) => handleConcurrencyChange(Number(e.target.value))}
               disabled={isLoading}
               className="w-16 h-2 accent-primary cursor-pointer"
               title={`${concurrency} concurrent agent${concurrency > 1 ? 's' : ''}`}

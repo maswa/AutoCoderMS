@@ -28,8 +28,10 @@ import { DependencyGraph } from './components/DependencyGraph'
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResearchProgressView, ResearchResultsView } from './components/research'
+import { ResetProjectModal } from './components/ResetProjectModal'
+import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { getDependencyGraph } from './lib/api'
-import { Loader2, Settings, Moon, Sun } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,6 +39,9 @@ import { Badge } from '@/components/ui/badge'
 
 const STORAGE_KEY = 'autocoder-selected-project'
 const VIEW_MODE_KEY = 'autocoder-view-mode'
+
+// Bottom padding for main content when debug panel is collapsed (40px header + 8px margin)
+const COLLAPSED_DEBUG_PANEL_CLEARANCE = 48
 
 // Wrapper component for ResearchProgressView that extracts route params
 function ResearchProgressRoute() {
@@ -100,6 +105,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [isSpecCreating, setIsSpecCreating] = useState(false)
+  const [showResetModal, setShowResetModal] = useState(false)
   const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
   const [fromResearch, setFromResearch] = useState(false)  // True when navigating from research results
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -267,10 +273,18 @@ function App() {
         setShowKeyboardHelp(true)
       }
 
+      // R : Open reset modal (when project selected and agent not running)
+      if ((e.key === 'r' || e.key === 'R') && selectedProject && wsState.agentStatus !== 'running') {
+        e.preventDefault()
+        setShowResetModal(true)
+      }
+
       // Escape : Close modals
       if (e.key === 'Escape') {
         if (showKeyboardHelp) {
           setShowKeyboardHelp(false)
+        } else if (showResetModal) {
+          setShowResetModal(false)
         } else if (showExpandProject) {
           setShowExpandProject(false)
         } else if (showSettings) {
@@ -289,7 +303,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, debugActiveTab, assistantOpen, features, showSettings, showKeyboardHelp, isSpecCreating, viewMode])
+  }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, debugActiveTab, assistantOpen, features, showSettings, showKeyboardHelp, isSpecCreating, viewMode, showResetModal, wsState.agentStatus])
 
   // Combine WebSocket progress with feature data
   const progress = wsState.progress.total > 0 ? wsState.progress : {
@@ -316,7 +330,7 @@ function App() {
       <Route path="*" element={
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-card text-foreground border-b-2 border-border">
+      <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md text-foreground border-b-2 border-border">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Title */}
@@ -340,6 +354,7 @@ function App() {
                   <AgentControl
                     projectName={selectedProject}
                     status={wsState.agentStatus}
+                    defaultConcurrency={selectedProjectData?.default_concurrency}
                   />
 
                   <DevServerControl
@@ -356,6 +371,17 @@ function App() {
                     aria-label="Open Settings"
                   >
                     <Settings size={18} />
+                  </Button>
+
+                  <Button
+                    onClick={() => setShowResetModal(true)}
+                    variant="outline"
+                    size="sm"
+                    title="Reset Project (R)"
+                    aria-label="Reset Project"
+                    disabled={wsState.agentStatus === 'running'}
+                  >
+                    <RotateCcw size={18} />
                   </Button>
 
                   {/* Ollama Mode Indicator */}
@@ -406,7 +432,7 @@ function App() {
       {/* Main Content */}
       <main
         className="max-w-7xl mx-auto px-4 py-8"
-        style={{ paddingBottom: debugOpen ? debugPanelHeight + 32 : undefined }}
+        style={{ paddingBottom: debugOpen ? debugPanelHeight + 32 : COLLAPSED_DEBUG_PANEL_CLEARANCE }}
       >
         {!selectedProject ? (
           <div className="text-center mt-12">
@@ -417,6 +443,16 @@ function App() {
               Select a project from the dropdown above or create a new one to get started.
             </p>
           </div>
+        ) : !hasSpec ? (
+          <ProjectSetupRequired
+            projectName={selectedProject}
+            projectPath={selectedProjectData?.path}
+            onCreateWithClaude={() => setShowSpecChat(true)}
+            onEditManually={() => {
+              // Open debug panel for the user to see the project path
+              setDebugOpen(true)
+            }}
+          />
         ) : (
           <div className="space-y-8">
             {/* Progress Dashboard */}
@@ -584,6 +620,21 @@ function App() {
 
       {/* Keyboard Shortcuts Help */}
       <KeyboardShortcutsHelp isOpen={showKeyboardHelp} onClose={() => setShowKeyboardHelp(false)} />
+
+      {/* Reset Project Modal */}
+      {showResetModal && selectedProject && (
+        <ResetProjectModal
+          isOpen={showResetModal}
+          projectName={selectedProject}
+          onClose={() => setShowResetModal(false)}
+          onResetComplete={(wasFullReset) => {
+            // If full reset, the spec was deleted - show spec creation chat
+            if (wasFullReset) {
+              setShowSpecChat(true)
+            }
+          }}
+        />
+      )}
 
       {/* Celebration Overlay - shows when a feature is completed by an agent */}
       {wsState.celebration && (

@@ -18,6 +18,7 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import * as api from '../lib/api'
+import { isSubmitEnter } from '../lib/keyboard'
 import type { DirectoryEntry, DriveInfo } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -269,7 +270,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                     className="flex-1"
                     autoFocus
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleCreateFolder()
+                      if (isSubmitEnter(e, false)) handleCreateFolder()
                       if (e.key === 'Escape') {
                         setIsCreatingFolder(false)
                         setNewFolderName('')
