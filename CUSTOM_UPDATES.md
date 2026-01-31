@@ -12,7 +12,8 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 4. [Research Agent UI Integration](#4-research-agent-ui-integration)
 5. [Git Branch Safety](#5-git-branch-safety)
 6. [Smart Testing Mode](#6-smart-testing-mode)
-7. [Update Checklist](#update-checklist)
+7. [Stuck Agent Detection](#7-stuck-agent-detection)
+8. [Update Checklist](#update-checklist)
 
 ---
 
@@ -599,7 +600,114 @@ python autonomous_agent_demo.py --project-dir myapp --testing-mode smart
 
 ---
 
-## 7. Update Checklist
+## 7. Stuck Agent Detection
+
+### Overview
+
+Added **activity-based stuck agent detection** to the parallel orchestrator. Agents that hang without producing output are automatically detected and killed, preventing features from being stuck indefinitely.
+
+**Problem solved:** Agents can sometimes hang (e.g., waiting indefinitely for API response) without crashing. Previously, these stuck agents would occupy a parallel slot forever, blocking progress.
+
+**Solution:** Monitor agent output activity. If no output for 20 minutes, the agent is considered stuck and is automatically killed. The feature is then retried.
+
+### How It Works
+
+```
+1. Agent starts → timestamp initialized
+2. Agent outputs a line → timestamp updated
+3. Every 5 seconds → check all agent timestamps
+4. If no output for 20 minutes → kill agent, log warning
+5. Agent completion handler → clears in_progress flag
+6. Feature automatically retries on next loop iteration
+```
+
+### Configuration
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `AGENT_INACTIVITY_TIMEOUT` | 1200 | Seconds of inactivity before killing (20 minutes) |
+
+The timeout is set to 20 minutes because:
+- Working agents produce continuous output (tool calls, code, thinking)
+- Complex features can take 1-2 hours but always produce output
+- 20 minutes of silence indicates the agent is stuck, not working
+
+### Modified Files
+
+#### `parallel_orchestrator.py`
+
+**New constant:**
+```python
+AGENT_INACTIVITY_TIMEOUT = 1200  # 20 minutes
+```
+
+**New tracking dictionary in `__init__`:**
+```python
+# Track last activity time per agent for stuck detection
+self._last_activity: dict[int, float] = {}
+```
+
+**Activity tracking in `_read_output`:**
+```python
+# Update activity timestamp for stuck detection
+if feature_id is not None:
+    with self._lock:
+        self._last_activity[activity_key] = time.time()
+```
+
+**New method `_check_stuck_agents`:**
+- Iterates through running coding and testing agents
+- Compares current time vs last activity timestamp
+- Kills agents exceeding `AGENT_INACTIVITY_TIMEOUT`
+- Logs warnings to console and debug log
+- Returns list of killed feature IDs
+
+**Main loop integration:**
+```python
+# Check for stuck agents (no output for AGENT_INACTIVITY_TIMEOUT)
+stuck_features = self._check_stuck_agents()
+if stuck_features:
+    debug_log.log("STUCK", f"Killed {len(stuck_features)} stuck agent(s)")
+```
+
+**Cleanup in `_on_agent_complete`:**
+```python
+# Clean up activity tracking
+self._last_activity.pop(feature_id, None)
+```
+
+### Log Output
+
+**Console warning:**
+```
+WARNING: Feature #32 agent stuck - no output for 20 minutes. Killing...
+```
+
+**Debug log (`orchestrator_debug.log`):**
+```
+[STUCK] Killing stuck coding agent for feature #32
+    inactive_minutes: 20
+    pid: 26979
+```
+
+### Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Self-healing** | Stuck agents are automatically recovered without manual intervention |
+| **No false positives** | 20-minute timeout is long enough for legitimate slow operations |
+| **Low overhead** | Just comparing timestamps, runs every 5 seconds |
+| **Full logging** | All stuck agent events logged for debugging |
+
+### Future Improvements
+
+- [ ] Make timeout configurable via settings UI
+- [ ] Add WebSocket notification when stuck agent is detected
+- [ ] Track stuck agent frequency per feature (identify problematic features)
+
+---
+
+## 8. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
@@ -663,11 +771,20 @@ When updating AutoCoder from upstream, verify these items:
 - [ ] `ui/src/hooks/useProjects.ts` - testing_mode default
 - [ ] `ui/src/components/SettingsModal.tsx` - Browser Testing toggle
 
+### Stuck Agent Detection (new)
+- [ ] `parallel_orchestrator.py` - AGENT_INACTIVITY_TIMEOUT constant
+- [ ] `parallel_orchestrator.py` - _last_activity dictionary in __init__
+- [ ] `parallel_orchestrator.py` - Activity tracking in _read_output
+- [ ] `parallel_orchestrator.py` - _check_stuck_agents method
+- [ ] `parallel_orchestrator.py` - Stuck check in main loop
+- [ ] `parallel_orchestrator.py` - Cleanup in _on_agent_complete
+
 ### General
 - [ ] Verify Playwright uses Firefox by default
 - [ ] Check that browser runs headless by default
 - [ ] Test research agent: `python autonomous_agent_demo.py --project-dir test --agent-type research`
 - [ ] Test smart testing mode: Settings → Browser Testing → Smart
+- [ ] Test stuck agent detection: Let agent run and verify stuck agents are killed after 20 min inactivity
 
 ---
 
@@ -723,6 +840,7 @@ git checkout client.py .env.example
 | `.claude/commands/gsd-map-codebase.md` | Command | /gsd:map-codebase |
 | `.claude/skills/gsd-map-codebase/SKILL.md` | Skill | Research skill definition |
 | `.env.example` | Config | Updated documentation |
+| `parallel_orchestrator.py` | Backend | Stuck agent detection with 20-min inactivity timeout |
 
 ---
 
@@ -734,7 +852,8 @@ git checkout client.py .env.example
 - Research Agent UI - Full browser-based flow for codebase analysis
 - Git Branch Safety - Protected branch warnings, new branch creation before coding
 - Smart Testing Mode - Skip Playwright for API features to reduce overhead
+- Stuck Agent Detection - Auto-kill agents with no output for 20 minutes
 - Twitter-style UI theme with custom theme override system
 - Firefox + headless Playwright defaults
 
-**Branch:** `feature/research-agent`
+**Branch:** `master`
