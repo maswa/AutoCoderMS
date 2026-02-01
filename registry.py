@@ -17,8 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Integer, String, create_engine, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -75,7 +74,9 @@ class RegistryPermissionDenied(RegistryError):
 # SQLAlchemy Model
 # =============================================================================
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0 style declarative base."""
+    pass
 
 
 class Project(Base):

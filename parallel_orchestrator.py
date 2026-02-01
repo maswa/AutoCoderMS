@@ -19,13 +19,17 @@ Usage:
 """
 
 import asyncio
+import atexit
 import os
+import signal
 import subprocess
 import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Literal
+
+from sqlalchemy import text
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
@@ -139,11 +143,11 @@ class ParallelOrchestrator:
         self,
         project_dir: Path,
         max_concurrency: int = DEFAULT_CONCURRENCY,
-        model: str = None,
+        model: str | None = None,
         yolo_mode: bool = False,
         testing_agent_ratio: int = 1,
-        on_output: Callable[[int, str], None] = None,
-        on_status: Callable[[int, str], None] = None,
+        on_output: Callable[[int, str], None] | None = None,
+        on_status: Callable[[int, str], None] | None = None,
     ):
         """Initialize the orchestrator.
 
@@ -182,14 +186,18 @@ class ParallelOrchestrator:
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}
 
+        # Shutdown flag for async-safe signal handling
+        # Signal handlers only set this flag; cleanup happens in the main loop
+        self._shutdown_requested = False
+
         # Session tracking for logging/debugging
-        self.session_start_time: datetime = None
+        self.session_start_time: datetime | None = None
 
         # Event signaled when any agent completes, allowing the main loop to wake
         # immediately instead of waiting for the full POLL_INTERVAL timeout.
         # This reduces latency when spawning the next feature after completion.
-        self._agent_completed_event: asyncio.Event = None  # Created in run_loop
-        self._event_loop: asyncio.AbstractEventLoop = None  # Stored for thread-safe signaling
+        self._agent_completed_event: asyncio.Event | None = None  # Created in run_loop
+        self._event_loop: asyncio.AbstractEventLoop | None = None  # Stored for thread-safe signaling
 
         # Database session for this orchestrator
         self._engine, self._session_maker = create_database(project_dir)
@@ -375,7 +383,8 @@ class ParallelOrchestrator:
         session = self.get_session()
         try:
             session.expire_all()
-            return session.query(Feature).filter(Feature.passes == True).count()
+            count: int = session.query(Feature).filter(Feature.passes == True).count()
+            return count
         finally:
             session.close()
 
@@ -511,11 +520,14 @@ class ParallelOrchestrator:
         try:
             # CREATE_NO_WINDOW on Windows prevents console window pop-ups
             # stdin=DEVNULL prevents blocking on stdin reads
+            # encoding="utf-8" and errors="replace" fix Windows CP1252 issues
             popen_kwargs = {
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.STDOUT,
                 "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
                 "cwd": str(AUTOCODER_ROOT),  # Run from autocoder root for proper imports
                 "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
             }
@@ -546,7 +558,7 @@ class ParallelOrchestrator:
             daemon=True
         ).start()
 
-        if self.on_status:
+        if self.on_status is not None:
             self.on_status(feature_id, "running")
 
         print(f"Started coding agent for feature #{feature_id}", flush=True)
@@ -600,11 +612,14 @@ class ParallelOrchestrator:
             try:
                 # CREATE_NO_WINDOW on Windows prevents console window pop-ups
                 # stdin=DEVNULL prevents blocking on stdin reads
+                # encoding="utf-8" and errors="replace" fix Windows CP1252 issues
                 popen_kwargs = {
                     "stdin": subprocess.DEVNULL,
                     "stdout": subprocess.PIPE,
                     "stderr": subprocess.STDOUT,
                     "text": True,
+                    "encoding": "utf-8",
+                    "errors": "replace",
                     "cwd": str(AUTOCODER_ROOT),
                     "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
                 }
@@ -658,11 +673,14 @@ class ParallelOrchestrator:
 
         # CREATE_NO_WINDOW on Windows prevents console window pop-ups
         # stdin=DEVNULL prevents blocking on stdin reads
+        # encoding="utf-8" and errors="replace" fix Windows CP1252 issues
         popen_kwargs = {
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.PIPE,
             "stderr": subprocess.STDOUT,
             "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
             "cwd": str(AUTOCODER_ROOT),
             "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
         }
@@ -682,7 +700,7 @@ class ParallelOrchestrator:
                     if not line:
                         break
                     print(line.rstrip(), flush=True)
-                    if self.on_output:
+                    if self.on_output is not None:
                         self.on_output(0, line.rstrip())  # Use 0 as feature_id for initializer
                 proc.wait()
 
@@ -716,11 +734,14 @@ class ParallelOrchestrator:
     ):
         """Read output from subprocess and emit events."""
         try:
+            if proc.stdout is None:
+                proc.wait()
+                return
             for line in proc.stdout:
                 if abort.is_set():
                     break
                 line = line.rstrip()
-                if self.on_output:
+                if self.on_output is not None:
                     self.on_output(feature_id or 0, line)
                 else:
                     # Both coding and testing agents now use [Feature #X] format
@@ -814,6 +835,9 @@ class ParallelOrchestrator:
             self._signal_agent_completed()
             return
 
+        # feature_id is required for coding agents (always passed from start_feature)
+        assert feature_id is not None, "feature_id must not be None for coding agents"
+
         # Coding agent completion
         debug_log.log("COMPLETE", f"Coding agent for feature #{feature_id} finished",
             return_code=return_code,
@@ -855,7 +879,7 @@ class ParallelOrchestrator:
                     failure_count=failure_count)
 
         status = "completed" if return_code == 0 else "failed"
-        if self.on_status:
+        if self.on_status is not None:
             self.on_status(feature_id, status)
         # CRITICAL: This print triggers the WebSocket to emit agent_update with state='error' or 'success'
         print(f"Feature #{feature_id} {status}", flush=True)
@@ -1014,7 +1038,7 @@ class ParallelOrchestrator:
 
         debug_log.section("FEATURE LOOP STARTING")
         loop_iteration = 0
-        while self.is_running:
+        while self.is_running and not self._shutdown_requested:
             loop_iteration += 1
             if loop_iteration <= 3:
                 print(f"[DEBUG] === Loop iteration {loop_iteration} ===", flush=True)
@@ -1163,11 +1187,40 @@ class ParallelOrchestrator:
                 "yolo_mode": self.yolo_mode,
             }
 
+    def cleanup(self) -> None:
+        """Clean up database resources. Safe to call multiple times.
+
+        Forces WAL checkpoint to flush pending writes to main database file,
+        then disposes engine to close all connections. Prevents stale cache
+        issues when the orchestrator restarts.
+        """
+        # Atomically grab and clear the engine reference to prevent re-entry
+        engine = self._engine
+        self._engine = None
+
+        if engine is None:
+            return  # Already cleaned up
+
+        try:
+            debug_log.log("CLEANUP", "Forcing WAL checkpoint before dispose")
+            with engine.connect() as conn:
+                conn.execute(text("PRAGMA wal_checkpoint(FULL)"))
+                conn.commit()
+            debug_log.log("CLEANUP", "WAL checkpoint completed, disposing engine")
+        except Exception as e:
+            debug_log.log("CLEANUP", f"WAL checkpoint failed (non-fatal): {e}")
+
+        try:
+            engine.dispose()
+            debug_log.log("CLEANUP", "Engine disposed successfully")
+        except Exception as e:
+            debug_log.log("CLEANUP", f"Engine dispose failed: {e}")
+
 
 async def run_parallel_orchestrator(
     project_dir: Path,
     max_concurrency: int = DEFAULT_CONCURRENCY,
-    model: str = None,
+    model: str | None = None,
     yolo_mode: bool = False,
     testing_agent_ratio: int = 1,
 ) -> None:
@@ -1189,11 +1242,37 @@ async def run_parallel_orchestrator(
         testing_agent_ratio=testing_agent_ratio,
     )
 
+    # Set up cleanup to run on exit (handles normal exit, exceptions)
+    def cleanup_handler():
+        debug_log.log("CLEANUP", "atexit cleanup handler invoked")
+        orchestrator.cleanup()
+
+    atexit.register(cleanup_handler)
+
+    # Set up async-safe signal handler for graceful shutdown
+    # Only sets flags - everything else is unsafe in signal context
+    def signal_handler(signum, frame):
+        orchestrator._shutdown_requested = True
+        orchestrator.is_running = False
+
+    # Register SIGTERM handler for process termination signals
+    # Note: On Windows, SIGTERM handlers only fire from os.kill() calls within Python.
+    # External termination (Task Manager, taskkill, Popen.terminate()) uses
+    # TerminateProcess() which bypasses signal handlers entirely.
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Note: We intentionally do NOT register SIGINT handler
+    # Let Python raise KeyboardInterrupt naturally so the except block works
+
     try:
         await orchestrator.run_loop()
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Stopping agents...", flush=True)
         orchestrator.stop_all()
+    finally:
+        # CRITICAL: Always clean up database resources on exit
+        # This forces WAL checkpoint and disposes connections
+        orchestrator.cleanup()
 
 
 def main():
