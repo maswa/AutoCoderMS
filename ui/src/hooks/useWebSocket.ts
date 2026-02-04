@@ -95,6 +95,7 @@ export function useProjectWebSocket(projectName: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
+  const lastPongTime = useRef<number>(Date.now())
 
   const connect = useCallback(() => {
     if (!projectName) return
@@ -111,6 +112,7 @@ export function useProjectWebSocket(projectName: string | null) {
       ws.onopen = () => {
         setState(prev => ({ ...prev, isConnected: true }))
         reconnectAttempts.current = 0
+        lastPongTime.current = Date.now()  // Reset pong time on new connection
       }
 
       ws.onmessage = (event) => {
@@ -344,7 +346,8 @@ export function useProjectWebSocket(projectName: string | null) {
               break
 
             case 'pong':
-              // Heartbeat response
+              // Heartbeat response - update last successful pong time
+              lastPongTime.current = Date.now()
               break
 
             case 'research_update':
@@ -401,7 +404,20 @@ export function useProjectWebSocket(projectName: string | null) {
   // Send ping to keep connection alive
   const sendPing = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'ping' }))
+      try {
+        // Check if connection is stale (no pong for > 90 seconds)
+        const timeSinceLastPong = Date.now() - lastPongTime.current
+        if (timeSinceLastPong > 90000) {
+          console.warn('WebSocket connection stale, forcing reconnect')
+          wsRef.current.close()
+          return
+        }
+
+        wsRef.current.send(JSON.stringify({ type: 'ping' }))
+      } catch (e) {
+        console.error('Failed to send ping, closing connection', e)
+        wsRef.current?.close()
+      }
     }
   }, [])
 
@@ -450,11 +466,28 @@ export function useProjectWebSocket(projectName: string | null) {
 
     connect()
 
-    // Ping every 30 seconds
+    // Ping every 30 seconds (increased frequency to handle background tab throttling)
     const pingInterval = setInterval(sendPing, 30000)
+
+    // Handle visibility change - reconnect when tab becomes visible
+    // Browsers heavily throttle timers in background tabs, causing ping failures
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Tab became visible - send ping immediately
+        sendPing()
+
+        // If not connected, try to reconnect
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          connect()
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       clearInterval(pingInterval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }

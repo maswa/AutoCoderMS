@@ -131,6 +131,17 @@ export async function resetProject(
   })
 }
 
+export interface HasFeaturesResponse {
+  has_features: boolean
+  feature_count: number
+  passing_count: number
+  in_progress_count: number
+}
+
+export async function checkHasFeatures(name: string): Promise<HasFeaturesResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/has-features`)
+}
+
 // ============================================================================
 // Features API
 // ============================================================================

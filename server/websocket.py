@@ -674,9 +674,15 @@ class ResearchTracker:
         async with self._lock:
             update = None
 
-            # Check for research agent start
+            # Check for research agent start - reset all counters for fresh run
             if RESEARCH_PATTERNS['research_start'].search(line):
                 self.phase = 'scanning'
+                self.files_scanned = 0
+                self.findings_count = 0
+                self.current_document = None
+                self.last_tool = None
+                self.finalized = False
+                self.files_written = []
                 update = self._create_update(
                     'research_start',
                     'Research agent started, scanning codebase...'
@@ -702,9 +708,11 @@ class ResearchTracker:
             elif RESEARCH_PATTERNS['add_finding'].search(line):
                 self.last_tool = 'add_finding'
                 self.phase = 'analyzing'
+                # Increment findings count when add_finding tool is called
+                self.findings_count += 1
                 update = self._create_update(
                     'add_finding',
-                    'Recording research finding...'
+                    f'Recording research finding #{self.findings_count}...'
                 )
 
             elif RESEARCH_PATTERNS['get_context'].search(line):
@@ -976,8 +984,16 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     # Create research tracker for research agent progress
     research_tracker = ResearchTracker()
 
+        # Track consecutive send failures to detect dead connections
+    send_failures = [0]  # Use list to allow mutation in nested function
+    MAX_SEND_FAILURES = 3
+    connection_alive = [True]  # Track if connection is still alive
+
     async def on_output(line: str):
         """Handle agent output - broadcast to this WebSocket."""
+        if not connection_alive[0]:
+            return  # Skip if connection is known to be dead
+
         try:
             # Extract feature ID from line if present
             feature_id = None
@@ -999,6 +1015,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
                 log_msg["agentIndex"] = agent_index
 
             await websocket.send_json(log_msg)
+            send_failures[0] = 0  # Reset on success
 
             # Check if this line indicates agent activity (parallel mode)
             # and emit agent_update messages if so
@@ -1015,23 +1032,33 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             research_update = await research_tracker.process_line(line)
             if research_update:
                 await websocket.send_json(research_update)
-        except Exception:
-            pass  # Connection may be closed
+        except Exception as e:
+            send_failures[0] += 1
+            if send_failures[0] >= MAX_SEND_FAILURES:
+                connection_alive[0] = False
+                logger.debug(f"WebSocket connection appears dead after {send_failures[0]} failures: {e}")
 
     async def on_status_change(status: str):
         """Handle status change - broadcast to this WebSocket."""
+        if not connection_alive[0]:
+            return  # Skip if connection is known to be dead
+
         try:
             await websocket.send_json({
                 "type": "agent_status",
                 "status": status,
             })
+            send_failures[0] = 0  # Reset on success
             # Reset trackers when agent stops OR crashes to prevent ghost agents on restart
             if status in ("stopped", "crashed"):
                 await agent_tracker.reset()
                 await orchestrator_tracker.reset()
                 await research_tracker.reset()
-        except Exception:
-            pass  # Connection may be closed
+        except Exception as e:
+            send_failures[0] += 1
+            if send_failures[0] >= MAX_SEND_FAILURES:
+                connection_alive[0] = False
+                logger.debug(f"WebSocket connection appears dead after {send_failures[0]} failures: {e}")
 
     # Register callbacks for coding agent
     agent_manager.add_output_callback(on_output)
@@ -1101,16 +1128,37 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         })
 
         # Keep connection alive and handle incoming messages
+        # Use timeout to periodically check connection health
+        last_ping_time = asyncio.get_event_loop().time()
+        RECEIVE_TIMEOUT = 60.0  # 60 seconds timeout (client pings every 30s)
+
         while True:
+            if not connection_alive[0]:
+                logger.debug(f"WebSocket connection for {project_name} marked as dead, closing")
+                break
+
             try:
-                # Wait for any incoming messages (ping/pong, commands, etc.)
-                data = await websocket.receive_text()
+                # Wait for any incoming messages with timeout
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=RECEIVE_TIMEOUT
+                )
                 message = json.loads(data)
+                last_ping_time = asyncio.get_event_loop().time()
 
                 # Handle ping
                 if message.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
 
+            except asyncio.TimeoutError:
+                # No message received within timeout
+                # Check if we should close due to inactivity
+                current_time = asyncio.get_event_loop().time()
+                if current_time - last_ping_time > RECEIVE_TIMEOUT * 2:
+                    logger.warning(f"WebSocket for {project_name} timed out (no ping received)")
+                    break
+                # Otherwise, continue waiting - the client might just be idle
+                continue
             except WebSocketDisconnect:
                 break
             except json.JSONDecodeError:

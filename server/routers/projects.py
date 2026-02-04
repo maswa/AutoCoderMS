@@ -452,6 +452,41 @@ async def get_research_docs(name: str):
     }
 
 
+@router.get("/{name}/has-features")
+async def check_has_features(name: str):
+    """
+    Check if project has existing features in the database.
+
+    Returns:
+        Dictionary with has_features bool, feature_count, and passing_count
+    """
+    _init_imports()
+    assert _count_passing_tests is not None  # guaranteed by _init_imports()
+    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    # Import has_features from progress module
+    from progress import has_features
+
+    has_existing = has_features(project_dir)
+    passing, in_progress, total = _count_passing_tests(project_dir)
+
+    return {
+        "has_features": has_existing,
+        "feature_count": total,
+        "passing_count": passing,
+        "in_progress_count": in_progress,
+    }
+
+
 @router.post("/{name}/reset")
 async def reset_project(name: str, full_reset: bool = False):
     """

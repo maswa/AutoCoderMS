@@ -206,7 +206,9 @@ async def run_autonomous_agent(
         print("=" * 70)
         print()
         # Copy the app spec into the project directory for the agent to read
-        copy_spec_to_project(project_dir)
+        # Use force=True to ensure newer spec from .autocoder/prompts/ overwrites old root spec
+        # (important after research-to-spec conversion on existing projects)
+        copy_spec_to_project(project_dir, force=True)
     elif agent_type == "testing":
         print("Running as TESTING agent (regression testing)")
         print_progress_summary(project_dir)

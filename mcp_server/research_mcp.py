@@ -43,6 +43,7 @@ from api.research_database import (
     ResearchProgress,
     get_research_database_path,
     init_research_db,
+    reset_research_db,
 )
 
 # Configuration from environment
@@ -64,6 +65,10 @@ async def server_lifespan(server: FastMCP):
     # Initialize research database
     db_path = get_research_database_path(PROJECT_DIR)
     _engine, _session_maker = init_research_db(db_path)
+
+    # Reset database for fresh research session
+    # This ensures each research run starts with clean state
+    reset_research_db(db_path)
 
     yield
 
@@ -427,6 +432,29 @@ def research_scan_files(
     truncated = len(files) > limit
     files = files[:limit]
 
+    # Update progress tracking - set phase to scanning and update files_scanned
+    from api.research_database import get_research_session
+    db_path = get_research_database_path(PROJECT_DIR)
+    init_research_db(db_path)  # Ensure DB exists
+    session = get_research_session(db_path)
+    try:
+        progress = session.query(ResearchProgress).first()
+        if progress:
+            # Only update files_scanned, keep phase if already past scanning
+            progress.files_scanned = progress.files_scanned + len(files)
+            if progress.phase in (None, "scanning"):
+                progress.phase = "scanning"
+        else:
+            progress = ResearchProgress(
+                phase="scanning",
+                files_scanned=len(files),
+                findings_count=0,
+            )
+            session.add(progress)
+        session.commit()
+    finally:
+        session.close()
+
     return json.dumps({
         "files": files,
         "count": len(files),
@@ -533,6 +561,24 @@ def research_detect_stack() -> str:
     result["libraries"] = sorted(set(result["libraries"]))
     result["dev_tools"] = sorted(set(result["dev_tools"]))
 
+    # Update progress tracking - ensure phase is at least "scanning"
+    from api.research_database import get_research_session
+    db_path = get_research_database_path(PROJECT_DIR)
+    init_research_db(db_path)  # Ensure DB exists
+    session = get_research_session(db_path)
+    try:
+        progress = session.query(ResearchProgress).first()
+        if not progress:
+            progress = ResearchProgress(
+                phase="scanning",
+                files_scanned=0,
+                findings_count=0,
+            )
+            session.add(progress)
+            session.commit()
+    finally:
+        session.close()
+
     return json.dumps(result)
 
 
@@ -589,6 +635,9 @@ def research_add_finding(
         progress = session.query(ResearchProgress).first()
         if progress:
             progress.findings_count = session.query(ResearchDocument).count()
+            # Transition to analyzing phase when first finding is added
+            if progress.phase in (None, "scanning"):
+                progress.phase = "analyzing"
         else:
             progress = ResearchProgress(
                 phase="analyzing",

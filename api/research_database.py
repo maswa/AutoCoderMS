@@ -303,3 +303,24 @@ def clear_engine_cache() -> None:
     for engine in _engine_cache.values():
         engine.dispose()
     _engine_cache = {}
+
+
+def reset_research_db(db_path: Path) -> None:
+    """Reset the research database for a fresh research session.
+
+    Clears all existing research data (progress and documents) so that
+    a new research run starts from scratch. This should be called when
+    the research agent starts to ensure clean state.
+
+    Args:
+        db_path: Path to the research.db file
+    """
+    engine, SessionLocal = init_research_db(db_path)
+    session = SessionLocal()
+    try:
+        # Delete all existing data
+        session.query(ResearchProgress).delete()
+        session.query(ResearchDocument).delete()
+        session.commit()
+    finally:
+        session.close()

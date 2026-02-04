@@ -237,8 +237,19 @@ def _get_research_progress(project_dir: Path) -> dict:
         }
 
     try:
+        # Clear engine cache to ensure fresh connection
+        from api.research_database import _engine_cache
+        cache_key = str(db_path.resolve())
+        if cache_key in _engine_cache:
+            _engine_cache[cache_key].dispose()
+            del _engine_cache[cache_key]
+
         session = get_research_session(db_path)
         try:
+            # Force WAL checkpoint to see latest data from other processes (MCP server)
+            from sqlalchemy import text
+            session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+
             progress = session.query(ResearchProgress).first()
             if progress:
                 return {
@@ -341,10 +352,29 @@ async def start_research_agent(
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project directory not found: {project_dir}")
 
+    # Reset research database BEFORE starting to ensure clean state
+    # This avoids race conditions where API returns stale data
+    import sys
+    root = Path(__file__).parent.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from api.research_database import (
+        get_research_database_path,
+        init_research_db,
+        reset_research_db,
+        clear_engine_cache,
+    )
+
+    # Clear engine cache first to ensure fresh connection
+    clear_engine_cache()
+    db_path = get_research_database_path(project_dir)
+    init_research_db(db_path)
+    reset_research_db(db_path)
+
     manager = get_research_manager(project_name, project_dir, ROOT_DIR)
 
     # Get default model from global settings if not provided
-    _, default_model, _ = _get_settings_defaults()
+    _, default_model, _, _, _, _ = _get_settings_defaults()
     model = request.model if request.model else default_model
 
     success, message = await manager.start(model=model)

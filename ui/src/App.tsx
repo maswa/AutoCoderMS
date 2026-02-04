@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
-import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/useProjects'
+import { useProjects, useFeatures, useAgentStatus, useSettings, useResetProject } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
 import { useFeatureSound } from './hooks/useFeatureSound'
 import { useCelebration } from './hooks/useCelebration'
@@ -28,8 +28,9 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResearchProgressView, ResearchResultsView, ReanalyzeCodebaseModal } from './components/research'
 import { ResetProjectModal } from './components/ResetProjectModal'
+import { ReinitializeFeaturesModal } from './components/ReinitializeFeaturesModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
-import { getDependencyGraph, startAgent } from './lib/api'
+import { getDependencyGraph, startAgent, checkHasFeatures } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, Microscope } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
@@ -112,6 +113,9 @@ function App() {
   const [fromResearch, setFromResearch] = useState(false)  // True when navigating from research results
   const [specInitializerStatus, setSpecInitializerStatus] = useState<InitializerStatus>('idle')
   const [specInitializerError, setSpecInitializerError] = useState<string | null>(null)
+  const [showReinitializeModal, setShowReinitializeModal] = useState(false)
+  const [pendingYoloMode, setPendingYoloMode] = useState(false)
+  const [existingFeatureInfo, setExistingFeatureInfo] = useState<{ count: number; passing: number } | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -125,6 +129,7 @@ function App() {
   const { data: projects, isLoading: projectsLoading } = useProjects()
   const { data: features } = useFeatures(selectedProject)
   const { data: settings } = useSettings()
+  const resetProject = useResetProject(selectedProject ?? '')
   useAgentStatus(selectedProject) // Keep polling for status updates
   const wsState = useProjectWebSocket(selectedProject)
   const { theme, setTheme, darkMode, toggleDarkMode, themes } = useTheme()
@@ -601,6 +606,27 @@ function App() {
             projectName={selectedProject}
             fromResearch={fromResearch}
             onComplete={async (_specPath, yoloMode) => {
+              // When coming from research, check if project has existing features
+              if (fromResearch) {
+                try {
+                  const featureInfo = await checkHasFeatures(selectedProject)
+                  if (featureInfo.has_features) {
+                    // Project has existing features - show reinitialize modal
+                    setShowSpecChat(false)
+                    setPendingYoloMode(yoloMode ?? false)
+                    setExistingFeatureInfo({
+                      count: featureInfo.feature_count,
+                      passing: featureInfo.passing_count,
+                    })
+                    setShowReinitializeModal(true)
+                    return
+                  }
+                } catch {
+                  // If check fails, proceed normally (initializer will handle it)
+                }
+              }
+
+              // No existing features or not from research - start agent normally
               setSpecInitializerStatus('starting')
               try {
                 await startAgent(selectedProject, {
@@ -690,6 +716,45 @@ function App() {
           projectPath={selectedProjectData?.path}
           onClose={() => setShowReanalyzeModal(false)}
           onStartAnalysis={handleReanalyzeComplete}
+        />
+      )}
+
+      {/* Reinitialize Features Modal - shown after spec creation when project has existing features */}
+      {showReinitializeModal && selectedProject && existingFeatureInfo && (
+        <ReinitializeFeaturesModal
+          isOpen={showReinitializeModal}
+          projectName={selectedProject}
+          existingFeatureCount={existingFeatureInfo.count}
+          passingCount={existingFeatureInfo.passing}
+          onReinitialize={async () => {
+            // Clear features.db by doing a quick reset (preserves spec)
+            await resetProject.mutateAsync(false)
+            // Start agent - since DB is now empty, initializer will run
+            await startAgent(selectedProject, {
+              yoloMode: pendingYoloMode,
+              maxConcurrency: 3,
+            })
+            // Clean up state
+            setShowReinitializeModal(false)
+            setFromResearch(false)
+            setExistingFeatureInfo(null)
+            setPendingYoloMode(false)
+            queryClient.invalidateQueries({ queryKey: ['projects'] })
+            queryClient.invalidateQueries({ queryKey: ['features', selectedProject] })
+            queryClient.invalidateQueries({ queryKey: ['has-features', selectedProject] })
+          }}
+          onKeepFeatures={() => {
+            // Close modal and go to project view with old features
+            setShowReinitializeModal(false)
+            setFromResearch(false)
+            setExistingFeatureInfo(null)
+            setPendingYoloMode(false)
+          }}
+          onCancel={() => {
+            // Return to spec chat
+            setShowReinitializeModal(false)
+            setShowSpecChat(true)
+          }}
         />
       )}
 

@@ -62,6 +62,15 @@ export function useResetProject(projectName: string) {
   })
 }
 
+export function useHasFeatures(projectName: string | null) {
+  return useQuery({
+    queryKey: ['has-features', projectName],
+    queryFn: () => api.checkHasFeatures(projectName!),
+    enabled: !!projectName,
+    staleTime: 0, // Always fetch fresh data
+  })
+}
+
 export function useUpdateProjectSettings(projectName: string) {
   const queryClient = useQueryClient()
 

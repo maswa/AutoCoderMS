@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Microscope, FileSearch, Brain, FileText, CheckCircle, Square, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -150,11 +150,39 @@ function ResearchAgentMascot({ phase, size = 48 }: { phase: ResearchPhase; size?
   )
 }
 
-// Calculate progress percentage based on phase
-function calculateProgress(phase: ResearchPhase): number {
+// Calculate progress percentage based on phase AND actual metrics
+function calculateProgress(
+  phase: ResearchPhase,
+  filesScanned: number = 0,
+  findingsCount: number = 0
+): number {
+  // Base progress from phase
   const config = PHASE_CONFIG[phase]
-  // Return the midpoint of the phase range for a smooth visualization
-  return (config.progressMin + config.progressMax) / 2
+
+  switch (phase) {
+    case 'idle':
+      return 5
+
+    case 'scanning':
+      // 5-25%: Progress based on files scanned (estimate ~50 files typical)
+      const scanProgress = Math.min(filesScanned / 50, 1)
+      return 5 + scanProgress * 20
+
+    case 'analyzing':
+      // 25-75%: Progress based on findings (estimate ~25 findings typical)
+      const analyzeProgress = Math.min(findingsCount / 25, 1)
+      return 25 + analyzeProgress * 50
+
+    case 'documenting':
+      // 75-95%: Linear progress during documentation
+      return 85
+
+    case 'complete':
+      return 100
+
+    default:
+      return (config.progressMin + config.progressMax) / 2
+  }
 }
 
 // Format timestamp for log display
@@ -174,26 +202,57 @@ function formatLogTime(timestamp: string): string {
 
 export function ResearchProgressView({ projectName }: ResearchProgressViewProps) {
   const navigate = useNavigate()
-  const { researchState: wsResearchState, isConnected } = useProjectWebSocket(projectName)
+  const queryClient = useQueryClient()
+  const { researchState: wsResearchState, isConnected, clearResearchState } = useProjectWebSocket(projectName)
   const [isLogsExpanded, setIsLogsExpanded] = useState(true)
   const [isStopping, setIsStopping] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
+  const maxProgressRef = useRef<number>(0) // Track highest progress to prevent going backwards
+
+  // Reset maxProgress, clear stale WebSocket state, and invalidate query cache on mount
+  useEffect(() => {
+    maxProgressRef.current = 0
+    clearResearchState()
+    // Invalidate query cache to ensure fresh data
+    queryClient.invalidateQueries({ queryKey: ['researchStatus', projectName] })
+  }, [projectName, clearResearchState, queryClient])
 
   // Poll research status from API to get current state (especially if we missed WebSocket updates)
   const { data: apiStatus } = useQuery({
     queryKey: ['researchStatus', projectName],
     queryFn: () => fetchResearchStatus(projectName),
-    refetchInterval: 2000, // Poll every 2 seconds
+    refetchInterval: 1000, // Poll every 1 second for responsive updates
+    staleTime: 0, // Always consider data stale
+    gcTime: 0, // Don't cache results
     enabled: !!projectName,
   })
 
-  // Merge WebSocket state with API status - WebSocket takes priority for real-time updates
-  const researchState = wsResearchState ?? (apiStatus ? {
-    phase: apiStatus.phase as ResearchPhase,
-    filesScanned: apiStatus.files_scanned,
-    findingsCount: apiStatus.findings_count,
-    logs: [],
-  } : null)
+  // Merge WebSocket state with API status
+  // API is authoritative for ALL metrics (phase, filesScanned, findingsCount)
+  // WebSocket only provides real-time activity logs
+  const researchState = (() => {
+    // API is the source of truth for metrics
+    const apiState = apiStatus ? {
+      phase: (apiStatus.phase ?? 'idle') as ResearchPhase,
+      filesScanned: apiStatus.files_scanned ?? 0,
+      findingsCount: apiStatus.findings_count ?? 0,
+      finalized: apiStatus.finalized ?? false,
+      currentTool: wsResearchState?.currentTool ?? null,
+      filesWritten: [] as string[],
+      logs: wsResearchState?.logs ?? [],
+    } : null
+
+    // If no API data yet, use WebSocket state but with 0 counts (they're unreliable)
+    if (!apiState && wsResearchState) {
+      return {
+        ...wsResearchState,
+        filesScanned: 0, // WebSocket can't track this reliably
+        findingsCount: 0, // WebSocket can't track this reliably
+      }
+    }
+
+    return apiState
+  })()
 
   // Scroll to bottom of logs when new entries arrive
   useEffect(() => {
@@ -231,7 +290,24 @@ export function ResearchProgressView({ projectName }: ResearchProgressViewProps)
   // Derive current phase - default to idle if no research state
   const currentPhase: ResearchPhase = researchState?.phase ?? 'idle'
   const phaseConfig = PHASE_CONFIG[currentPhase]
-  const progress = calculateProgress(currentPhase)
+
+  // Calculate progress based on actual metrics
+  const filesScanned = researchState?.filesScanned ?? 0
+  const findingsCount = researchState?.findingsCount ?? 0
+  const rawProgress = calculateProgress(currentPhase, filesScanned, findingsCount)
+
+  // Reset progress when a new research starts or no research exists
+  // Detected by: phase is null/idle, or scanning with 0 findings
+  if (!currentPhase || currentPhase === 'idle' || (currentPhase === 'scanning' && findingsCount === 0)) {
+    maxProgressRef.current = 0
+  }
+
+  // Progress should never go backwards (except on reset)
+  if (rawProgress > maxProgressRef.current) {
+    maxProgressRef.current = rawProgress
+  }
+  const progress = maxProgressRef.current
+
   const isComplete = currentPhase === 'complete'
   const logs = researchState?.logs ?? []
 
