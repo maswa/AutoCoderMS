@@ -439,6 +439,18 @@ class SpecChatSession:
                             if files_written["app_spec"] and files_written["initializer"]:
                                 logger.info("Both app_spec.txt and initializer_prompt.md verified - signaling completion")
                                 self.complete = True
+
+                                # Delete CLAUDE.md - it was only needed during spec creation
+                                # to pass the long system prompt to the SDK. Leaving it would
+                                # confuse the initializer/coding agents with spec creation instructions.
+                                claude_md_path = self.project_dir / "CLAUDE.md"
+                                if claude_md_path.exists():
+                                    try:
+                                        claude_md_path.unlink()
+                                        logger.info("Deleted CLAUDE.md after spec creation")
+                                    except Exception as e:
+                                        logger.warning(f"Could not delete CLAUDE.md: {e}")
+
                                 yield {
                                     "type": "spec_complete",
                                     "path": str(spec_path)
