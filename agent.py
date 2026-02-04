@@ -232,7 +232,9 @@ async def run_autonomous_agent(
 
         # Check if all features are already complete (before starting a new session)
         # Skip this check if running as initializer (needs to create features first)
-        if not is_initializer and iteration == 1:
+        # Skip this check if running as research agent (analyzes codebase regardless of features)
+        is_research = agent_type == "research"
+        if not is_initializer and not is_research and iteration == 1:
             passing, in_progress, total = count_passing_tests(project_dir)
             if total > 0 and passing == total:
                 print("\n" + "=" * 70)
