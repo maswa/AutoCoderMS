@@ -12,8 +12,9 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 4. [Research Agent UI Integration](#4-research-agent-ui-integration)
 5. [Git Branch Safety](#5-git-branch-safety)
 6. [Smart Testing Mode](#6-smart-testing-mode)
-7. [Stuck Agent Detection](#7-stuck-agent-detection)
-8. [Update Checklist](#update-checklist)
+7. [Re-analyze Codebase for Existing Projects](#7-re-analyze-codebase-for-existing-projects)
+8. [Stuck Agent Detection](#8-stuck-agent-detection)
+9. [Update Checklist](#update-checklist)
 
 ---
 
@@ -600,7 +601,93 @@ python autonomous_agent_demo.py --project-dir myapp --testing-mode smart
 
 ---
 
-## 7. Stuck Agent Detection
+## 7. Re-analyze Codebase for Existing Projects
+
+### Overview
+
+Added a **Re-analyze Codebase** button for existing projects in AutoCoder. This allows running the research agent on a project that's already registered, to update documentation when the codebase has evolved outside of AutoCoder (e.g., manual changes with Claude Code).
+
+**Problem solved:** Previously, research/analyze was only available for onboarding NEW projects. If you modified an existing project outside of AutoCoder, there was no easy way to update the documentation.
+
+**Solution:** Added a microscope button in the project header that triggers a re-analysis of the current project.
+
+### User Flow
+
+```
+[Open Existing Project] → [🔬 Re-analyze Button in Header]
+       ↓
+Confirmation Modal (explains what will happen)
+       ↓
+Research Progress View (real-time updates)
+       ↓
+Results View (updated documentation)
+       ↓
+Optionally: Update app_spec.txt
+```
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `ui/src/components/research/ReanalyzeCodebaseModal.tsx` | Confirmation modal with project info and start button |
+
+### Modified Files
+
+#### Frontend
+
+| File | Changes |
+|------|---------|
+| `ui/src/components/research/index.ts` | Added export for `ReanalyzeCodebaseModal` |
+| `ui/src/lib/api.ts` | Added `getResearchStatus()`, `startResearchAgent()`, `stopResearchAgent()` |
+| `ui/src/App.tsx` | Added microscope button in header, modal state, navigation handler |
+
+### API Functions Added
+
+```typescript
+// ui/src/lib/api.ts
+
+interface ResearchStatusResponse {
+  status: 'idle' | 'running' | 'complete' | 'error'
+  phase?: string
+  filesScanned?: number
+  findingsCount?: number
+}
+
+interface ResearchActionResponse {
+  success: boolean
+  message: string
+}
+
+// Get research agent status for a project
+export async function getResearchStatus(projectName: string): Promise<ResearchStatusResponse>
+
+// Start research agent for existing project
+export async function startResearchAgent(projectName: string): Promise<ResearchActionResponse>
+
+// Stop research agent
+export async function stopResearchAgent(projectName: string): Promise<ResearchActionResponse>
+```
+
+### UI Location
+
+The Re-analyze button appears in the project header:
+- **Icon:** Microscope (🔬)
+- **Location:** Next to the Reset button (gear icon area)
+- **Visibility:** Only when a project is selected AND agent is NOT running
+- **Tooltip:** "Re-analyze Codebase"
+
+### Backend Note
+
+The backend already supported this via existing endpoints in `server/routers/agent.py`:
+- `GET /api/projects/{project_name}/agent/research/status`
+- `POST /api/projects/{project_name}/agent/start-research`
+- `POST /api/projects/{project_name}/agent/research/stop`
+
+No backend changes were needed.
+
+---
+
+## 8. Stuck Agent Detection
 
 ### Overview
 
@@ -707,7 +794,7 @@ WARNING: Feature #32 agent stuck - no output for 20 minutes. Killing...
 
 ---
 
-## 8. Update Checklist
+## 9. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
@@ -771,6 +858,12 @@ When updating AutoCoder from upstream, verify these items:
 - [ ] `ui/src/hooks/useProjects.ts` - testing_mode default
 - [ ] `ui/src/components/SettingsModal.tsx` - Browser Testing toggle
 
+### Re-analyze Codebase (new)
+- [ ] `ui/src/components/research/ReanalyzeCodebaseModal.tsx` - Confirmation modal
+- [ ] `ui/src/components/research/index.ts` - ReanalyzeCodebaseModal export
+- [ ] `ui/src/lib/api.ts` - Research API functions (getResearchStatus, startResearchAgent, stopResearchAgent)
+- [ ] `ui/src/App.tsx` - Microscope button in header, showReanalyzeModal state
+
 ### Stuck Agent Detection (new)
 - [ ] `parallel_orchestrator.py` - AGENT_INACTIVITY_TIMEOUT constant
 - [ ] `parallel_orchestrator.py` - _last_activity dictionary in __init__
@@ -819,6 +912,7 @@ git checkout client.py .env.example
 | `ui/src/components/research/MarkdownViewer.tsx` | UI | Markdown + syntax highlighting |
 | `ui/src/components/research/index.ts` | UI | Barrel exports |
 | `ui/src/components/research/BranchSelectionModal.tsx` | UI | Git branch selection modal |
+| `ui/src/components/research/ReanalyzeCodebaseModal.tsx` | UI | Re-analyze confirmation modal |
 | `ui/src/hooks/useWebSocket.ts` | UI | research_update message handling |
 | `ui/src/lib/types.ts` | UI | Research + Git TypeScript types |
 | `server/routers/git.py` | Server | Git branch management endpoints |
@@ -846,10 +940,11 @@ git checkout client.py .env.example
 
 ## Last Updated
 
-**Date:** January 2026
+**Date:** February 2026
 **Features:**
 - Research Agent (AutoCoder Plus) - Analyze existing codebases
 - Research Agent UI - Full browser-based flow for codebase analysis
+- **Re-analyze Codebase** - Run research on existing projects to update documentation
 - Git Branch Safety - Protected branch warnings, new branch creation before coding
 - Smart Testing Mode - Skip Playwright for API features to reduce overhead
 - Stuck Agent Detection - Auto-kill agents with no output for 20 minutes

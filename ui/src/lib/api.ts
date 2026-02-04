@@ -561,3 +561,51 @@ export async function createBranch(
     }),
   })
 }
+
+// ============================================================================
+// Research Agent API
+// ============================================================================
+
+export interface ResearchStatusResponse {
+  status: 'stopped' | 'running' | 'paused' | 'crashed'
+  pid: number | null
+  started_at: string | null
+  model: string | null
+  phase: string | null
+  files_scanned: number
+  findings_count: number
+  finalized: boolean
+  finalized_at: string | null
+}
+
+export interface ResearchActionResponse {
+  success: boolean
+  status: string
+  message: string
+}
+
+export async function getResearchStatus(projectName: string): Promise<ResearchStatusResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/research/status`)
+}
+
+export async function startResearchAgent(
+  projectName: string,
+  options: {
+    model?: string
+    projectDir?: string
+  } = {}
+): Promise<ResearchActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/start-research`, {
+    method: 'POST',
+    body: JSON.stringify({
+      model: options.model,
+      project_dir: options.projectDir,
+    }),
+  })
+}
+
+export async function stopResearchAgent(projectName: string): Promise<ResearchActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/research/stop`, {
+    method: 'POST',
+  })
+}

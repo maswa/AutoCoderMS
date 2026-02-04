@@ -26,11 +26,11 @@ import { ViewToggle, type ViewMode } from './components/ViewToggle'
 import { DependencyGraph } from './components/DependencyGraph'
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
-import { ResearchProgressView, ResearchResultsView } from './components/research'
+import { ResearchProgressView, ResearchResultsView, ReanalyzeCodebaseModal } from './components/research'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { getDependencyGraph, startAgent } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen } from 'lucide-react'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen, Microscope } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -107,6 +107,7 @@ function App() {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [isSpecCreating, setIsSpecCreating] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
+  const [showReanalyzeModal, setShowReanalyzeModal] = useState(false)
   const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
   const [fromResearch, setFromResearch] = useState(false)  // True when navigating from research results
   const [specInitializerStatus, setSpecInitializerStatus] = useState<InitializerStatus>('idle')
@@ -190,6 +191,14 @@ function App() {
     // Navigate to the research progress view
     navigate(`/research/${encodeURIComponent(projectName)}`)
   }, [navigate])
+
+  // Handle re-analysis of current project (closes modal and navigates)
+  const handleReanalyzeComplete = useCallback(() => {
+    if (selectedProject) {
+      setShowReanalyzeModal(false)
+      navigate(`/research/${encodeURIComponent(selectedProject)}`)
+    }
+  }, [selectedProject, navigate])
 
   // Handle graph node click - memoized to prevent DependencyGraph re-renders
   const handleGraphNodeClick = useCallback((nodeId: number) => {
@@ -385,6 +394,17 @@ function App() {
                     disabled={wsState.agentStatus === 'running'}
                   >
                     <RotateCcw size={18} />
+                  </Button>
+
+                  <Button
+                    onClick={() => setShowReanalyzeModal(true)}
+                    variant="outline"
+                    size="sm"
+                    title="Re-analyze Codebase"
+                    aria-label="Re-analyze Codebase"
+                    disabled={wsState.agentStatus === 'running'}
+                  >
+                    <Microscope size={18} />
                   </Button>
 
                   {/* Ollama Mode Indicator */}
@@ -659,6 +679,17 @@ function App() {
               setShowSpecChat(true)
             }
           }}
+        />
+      )}
+
+      {/* Re-analyze Codebase Modal */}
+      {showReanalyzeModal && selectedProject && (
+        <ReanalyzeCodebaseModal
+          isOpen={showReanalyzeModal}
+          projectName={selectedProject}
+          projectPath={selectedProjectData?.path}
+          onClose={() => setShowReanalyzeModal(false)}
+          onStartAnalysis={handleReanalyzeComplete}
         />
       )}
 
