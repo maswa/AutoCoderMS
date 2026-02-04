@@ -206,18 +206,22 @@ export function ResearchProgressView({ projectName }: ResearchProgressViewProps)
   const handleStopAnalysis = useCallback(async () => {
     setIsStopping(true)
     try {
-      const response = await fetch(`/api/agent/research/stop?project_name=${encodeURIComponent(projectName)}`, {
-        method: 'DELETE',
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectName)}/agent/research/stop`, {
+        method: 'POST',
       })
       if (!response.ok) {
-        console.error('Failed to stop research agent')
+        const error = await response.json().catch(() => ({ message: 'Unknown error' }))
+        console.error('Failed to stop research agent:', error)
+      } else {
+        // Navigate back to project after stopping
+        navigate(`/?project=${encodeURIComponent(projectName)}`)
       }
     } catch (error) {
       console.error('Error stopping research agent:', error)
     } finally {
       setIsStopping(false)
     }
-  }, [projectName])
+  }, [projectName, navigate])
 
   // Navigate to results handler
   const handleViewResults = useCallback(() => {

@@ -18,7 +18,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from .schemas import AGENT_MASCOTS
 from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import get_devserver_manager
-from .services.process_manager import get_manager
+from .services.process_manager import get_manager, get_research_manager
 from .utils.project_helpers import get_project_path as _get_project_path
 from .utils.validation import is_valid_project_name as validate_project_name
 
@@ -1033,9 +1033,14 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         except Exception:
             pass  # Connection may be closed
 
-    # Register callbacks
+    # Register callbacks for coding agent
     agent_manager.add_output_callback(on_output)
     agent_manager.add_status_callback(on_status_change)
+
+    # Get research agent manager and register callbacks for research output
+    research_manager = get_research_manager(project_name, project_dir, ROOT_DIR)
+    research_manager.add_output_callback(on_output)
+    research_manager.add_status_callback(on_status_change)
 
     # Get dev server manager and register callbacks
     devserver_manager = get_devserver_manager(project_name, project_dir)
@@ -1125,6 +1130,10 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         # Unregister agent callbacks
         agent_manager.remove_output_callback(on_output)
         agent_manager.remove_status_callback(on_status_change)
+
+        # Unregister research agent callbacks
+        research_manager.remove_output_callback(on_output)
+        research_manager.remove_status_callback(on_status_change)
 
         # Unregister dev server callbacks
         devserver_manager.remove_output_callback(on_dev_output)
