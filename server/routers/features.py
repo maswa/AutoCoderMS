@@ -8,10 +8,12 @@ API endpoints for feature/test case management.
 import logging
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import (
+    DependencyGraphEdge,
     DependencyGraphNode,
     DependencyGraphResponse,
     DependencyUpdate,
@@ -22,6 +24,7 @@ from ..schemas import (
     FeatureResponse,
     FeatureUpdate,
 )
+from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
 
 # Lazy imports to avoid circular dependencies
@@ -29,17 +32,6 @@ _create_database = None
 _Feature = None
 
 logger = logging.getLogger(__name__)
-
-
-def _get_project_path(project_name: str) -> Path:
-    """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from registry import get_project_path
-    return get_project_path(project_name)
 
 
 def _get_db_classes():
@@ -71,6 +63,9 @@ def get_db_session(project_dir: Path):
     session = SessionLocal()
     try:
         yield session
+    except Exception:
+        session.rollback()
+        raise
     finally:
         session.close()
 
@@ -131,7 +126,8 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    db_file = project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return FeatureListResponse(pending=[], in_progress=[], done=[])
 
@@ -326,7 +322,8 @@ async def get_dependency_graph(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    db_file = project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return DependencyGraphResponse(nodes=[], edges=[])
 
@@ -344,6 +341,7 @@ async def get_dependency_graph(project_name: str):
                 deps = f.dependencies or []
                 blocking = [d for d in deps if d not in passing_ids]
 
+                status: Literal["pending", "in_progress", "done", "blocked"]
                 if f.passes:
                     status = "done"
                 elif blocking:
@@ -363,7 +361,7 @@ async def get_dependency_graph(project_name: str):
                 ))
 
                 for dep_id in deps:
-                    edges.append({"source": dep_id, "target": f.id})
+                    edges.append(DependencyGraphEdge(source=dep_id, target=f.id))
 
             return DependencyGraphResponse(nodes=nodes, edges=edges)
     except HTTPException:
@@ -390,7 +388,8 @@ async def get_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    db_file = project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         raise HTTPException(status_code=404, detail="No features database found")
 

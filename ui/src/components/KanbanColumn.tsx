@@ -41,9 +41,14 @@ export function KanbanColumn({
   showCreateSpec,
 }: KanbanColumnProps) {
   // Create a map of feature ID to active agent for quick lookup
-  const agentByFeatureId = new Map(
-    activeAgents.map(agent => [agent.featureId, agent])
-  )
+  // Maps ALL batch feature IDs to the same agent
+  const agentByFeatureId = new Map<number, ActiveAgent>()
+  for (const agent of activeAgents) {
+    const ids = agent.featureIds || [agent.featureId]
+    for (const fid of ids) {
+      agentByFeatureId.set(fid, agent)
+    }
+  }
 
   return (
     <Card className={`overflow-hidden ${colorMap[color]} py-0`}>

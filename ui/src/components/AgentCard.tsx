@@ -112,12 +112,25 @@ export function AgentCard({ agent, onShowLogs }: AgentCardProps) {
 
         {/* Feature info */}
         <div>
-          <div className="text-xs text-muted-foreground mb-0.5">
-            Feature #{agent.featureId}
-          </div>
-          <div className="text-sm font-medium truncate" title={agent.featureName}>
-            {agent.featureName}
-          </div>
+          {agent.featureIds && agent.featureIds.length > 1 ? (
+            <>
+              <div className="text-xs text-muted-foreground mb-0.5">
+                Batch: {agent.featureIds.map(id => `#${id}`).join(', ')}
+              </div>
+              <div className="text-sm font-bold truncate">
+                Active: Feature #{agent.featureId}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs text-muted-foreground mb-0.5">
+                Feature #{agent.featureId}
+              </div>
+              <div className="text-sm font-medium truncate" title={agent.featureName}>
+                {agent.featureName}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Thought bubble */}
@@ -195,7 +208,10 @@ export function AgentLogModal({ agent, logs, onClose }: AgentLogModalProps) {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                Feature #{agent.featureId}: {agent.featureName}
+                {agent.featureIds && agent.featureIds.length > 1
+                  ? `Batch: ${agent.featureIds.map(id => `#${id}`).join(', ')}`
+                  : `Feature #${agent.featureId}: ${agent.featureName}`
+                }
               </p>
             </div>
           </div>

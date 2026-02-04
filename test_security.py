@@ -992,31 +992,26 @@ def main():
     failed += pkill_failed
 
     # Commands that SHOULD be blocked
+    # Note: blocklisted commands (sudo, shutdown, dd, aws) are tested in
+    # test_blocklist_enforcement(). chmod validation is tested in
+    # test_validate_chmod(). init.sh validation is tested in
+    # test_validate_init_script(). pkill validation is tested in
+    # test_pkill_extensibility(). The entries below focus on scenarios
+    # NOT covered by those dedicated tests.
     print("\nCommands that should be BLOCKED:\n")
     dangerous = [
         # Not in allowlist - dangerous system commands
-        "shutdown now",
         "reboot",
-        "dd if=/dev/zero of=/dev/sda",
         # Not in allowlist - common commands excluded from minimal set
         "wget https://example.com",
         "python app.py",
         "killall node",
-        # pkill with non-dev processes
+        # pkill with non-dev processes (pkill python tested in test_pkill_extensibility)
         "pkill bash",
         "pkill chrome",
-        "pkill python",
         # Shell injection attempts
         "$(echo pkill) node",
         'eval "pkill node"',
-        # chmod with disallowed modes
-        "chmod 777 file.sh",
-        "chmod 755 file.sh",
-        "chmod +w file.sh",
-        "chmod -R +x dir/",
-        # Non-init.sh scripts
-        "./setup.sh",
-        "./malicious.sh",
     ]
 
     for cmd in dangerous:
@@ -1026,6 +1021,10 @@ def main():
             failed += 1
 
     # Commands that SHOULD be allowed
+    # Note: chmod +x variants are tested in test_validate_chmod().
+    # init.sh variants are tested in test_validate_init_script().
+    # The combined "chmod +x init.sh && ./init.sh" below serves as the
+    # integration test verifying the hook routes to both validators correctly.
     print("\nCommands that should be ALLOWED:\n")
     safe = [
         # File inspection
@@ -1076,16 +1075,7 @@ def main():
         "ls | grep test",
         # Full paths
         "/usr/local/bin/node app.js",
-        # chmod +x (allowed)
-        "chmod +x init.sh",
-        "chmod +x script.sh",
-        "chmod u+x init.sh",
-        "chmod a+x init.sh",
-        # init.sh execution (allowed)
-        "./init.sh",
-        "./init.sh --production",
-        "/path/to/init.sh",
-        # Combined chmod and init.sh
+        # Combined chmod and init.sh (integration test for both validators)
         "chmod +x init.sh && ./init.sh",
     ]
 

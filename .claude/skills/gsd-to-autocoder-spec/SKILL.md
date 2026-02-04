@@ -9,7 +9,7 @@ description: |
 
 # GSD to Autocoder Spec Converter
 
-Converts `.planning/codebase/*.md` (GSD mapping output) to `prompts/app_spec.txt` (Autocoder format).
+Converts `.planning/codebase/*.md` (GSD mapping output) to `.autocoder/prompts/app_spec.txt` (Autocoder format).
 
 ## When to Use
 
@@ -86,7 +86,7 @@ Extract:
 
 Create `prompts/` directory:
 ```bash
-mkdir -p prompts
+mkdir -p .autocoder/prompts
 ```
 
 **Mapping GSD Documents to Autocoder Spec:**
@@ -116,7 +116,7 @@ mkdir -p prompts
 **Write the spec file** using the XML format from [references/app-spec-format.md](references/app-spec-format.md):
 
 ```bash
-cat > prompts/app_spec.txt << 'EOF'
+cat > .autocoder/prompts/app_spec.txt << 'EOF'
 <project_specification>
   <project_name>{from package.json or directory}</project_name>
 
@@ -175,9 +175,9 @@ EOF
 ### Step 5: Verify Generated Spec
 
 ```bash
-head -100 prompts/app_spec.txt
+head -100 .autocoder/prompts/app_spec.txt
 echo "---"
-grep -c "User can\|System\|API\|Feature" prompts/app_spec.txt || echo "0"
+grep -c "User can\|System\|API\|Feature" .autocoder/prompts/app_spec.txt || echo "0"
 ```
 
 **Validation checklist:**
@@ -196,7 +196,7 @@ Output:
 app_spec.txt generated from GSD codebase mapping.
 
 Source: .planning/codebase/*.md
-Output: prompts/app_spec.txt
+Output: .autocoder/prompts/app_spec.txt
 
 Next: Start Autocoder
 

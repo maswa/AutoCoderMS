@@ -6,6 +6,7 @@ API endpoints for browsing the filesystem for project folder selection.
 Provides cross-platform support for Windows, macOS, and Linux.
 """
 
+import functools
 import logging
 import os
 import re
@@ -13,6 +14,8 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+
+from security import SENSITIVE_DIRECTORIES
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -77,17 +80,10 @@ LINUX_BLOCKED = {
     "/opt",
 }
 
-# Universal blocked paths (relative to home directory)
-UNIVERSAL_BLOCKED_RELATIVE = {
-    ".ssh",
-    ".aws",
-    ".gnupg",
-    ".config/gh",
-    ".netrc",
-    ".docker",
-    ".kube",
-    ".terraform",
-}
+# Universal blocked paths (relative to home directory).
+# Delegates to the canonical SENSITIVE_DIRECTORIES set in security.py so that
+# the filesystem browser and the EXTRA_READ_PATHS validator share one source of truth.
+UNIVERSAL_BLOCKED_RELATIVE = SENSITIVE_DIRECTORIES
 
 # Patterns for files that should not be shown
 HIDDEN_PATTERNS = [
@@ -99,8 +95,14 @@ HIDDEN_PATTERNS = [
 ]
 
 
-def get_blocked_paths() -> set[Path]:
-    """Get the set of blocked paths for the current platform."""
+@functools.lru_cache(maxsize=1)
+def get_blocked_paths() -> frozenset[Path]:
+    """
+    Get the set of blocked paths for the current platform.
+
+    Cached because the platform and home directory do not change at runtime,
+    and this function is called once per directory entry in list_directory().
+    """
     home = Path.home()
     blocked = set()
 
@@ -119,7 +121,7 @@ def get_blocked_paths() -> set[Path]:
     for rel in UNIVERSAL_BLOCKED_RELATIVE:
         blocked.add((home / rel).resolve())
 
-    return blocked
+    return frozenset(blocked)
 
 
 def is_path_blocked(path: Path) -> bool:

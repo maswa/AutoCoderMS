@@ -371,7 +371,7 @@ class TerminalSession:
             # Reap zombie if not already reaped
             if self._child_pid is not None:
                 try:
-                    os.waitpid(self._child_pid, os.WNOHANG)
+                    os.waitpid(self._child_pid, os.WNOHANG)  # type: ignore[attr-defined]  # Unix-only method, guarded by runtime platform selection
                 except ChildProcessError:
                     pass
                 except Exception:
@@ -736,7 +736,7 @@ async def cleanup_all_terminals() -> None:
     Called on server shutdown to ensure all PTY processes are terminated.
     """
     with _sessions_lock:
-        all_sessions = []
+        all_sessions: list[TerminalSession] = []
         for project_sessions in _sessions.values():
             all_sessions.extend(project_sessions.values())
 

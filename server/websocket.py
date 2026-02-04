@@ -16,8 +16,11 @@ from typing import Set
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .schemas import AGENT_MASCOTS
+from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import get_devserver_manager
 from .services.process_manager import get_manager
+from .utils.project_helpers import get_project_path as _get_project_path
+from .utils.validation import is_valid_project_name as validate_project_name
 
 # Lazy imports
 _count_passing_tests = None
@@ -35,6 +38,14 @@ TESTING_AGENT_START_PATTERN = re.compile(r'Started testing agent for feature #(\
 # Pattern to detect testing agent completion
 # Matches: "Feature #123 testing completed" or "Feature #123 testing failed"
 TESTING_AGENT_COMPLETE_PATTERN = re.compile(r'Feature #(\d+) testing (completed|failed)')
+
+# Pattern to detect batch coding agent start message
+# Matches: "Started coding agent for features #5, #8, #12"
+BATCH_CODING_AGENT_START_PATTERN = re.compile(r'Started coding agent for features (#\d+(?:,\s*#\d+)*)')
+
+# Pattern to detect batch completion
+# Matches: "Features #5, #8, #12 completed" or "Features #5, #8, #12 failed"
+BATCH_FEATURES_COMPLETE_PATTERN = re.compile(r'Features (#\d+(?:,\s*#\d+)*)\s+(completed|failed)')
 
 # Patterns for detecting agent activity and thoughts
 THOUGHT_PATTERNS = [
@@ -61,9 +72,9 @@ ORCHESTRATOR_PATTERNS = {
     'capacity_check': re.compile(r'\[DEBUG\] Spawning loop: (\d+) ready, (\d+) slots'),
     'at_capacity': re.compile(r'At max capacity|at max testing agents|At max total agents'),
     'feature_start': re.compile(r'Starting feature \d+/\d+: #(\d+) - (.+)'),
-    'coding_spawn': re.compile(r'Started coding agent for feature #(\d+)'),
+    'coding_spawn': re.compile(r'Started coding agent for features? #(\d+)'),
     'testing_spawn': re.compile(r'Started testing agent for feature #(\d+)'),
-    'coding_complete': re.compile(r'Feature #(\d+) (completed|failed)'),
+    'coding_complete': re.compile(r'Features? #(\d+)(?:,\s*#\d+)* (completed|failed)'),
     'testing_complete': re.compile(r'Feature #(\d+) testing (completed|failed)'),
     'all_complete': re.compile(r'All features complete'),
     'blocked_features': re.compile(r'(\d+) blocked by dependencies'),
@@ -121,12 +132,22 @@ class AgentTracker:
         # Check for orchestrator status messages first
         # These don't have [Feature #X] prefix
 
-        # Coding agent start: "Started coding agent for feature #X"
+        # Batch coding agent start: "Started coding agent for features #5, #8, #12"
+        batch_start_match = BATCH_CODING_AGENT_START_PATTERN.match(line)
+        if batch_start_match:
+            try:
+                feature_ids = [int(x.strip().lstrip('#')) for x in batch_start_match.group(1).split(',')]
+                if feature_ids:
+                    return await self._handle_batch_agent_start(feature_ids, "coding")
+            except ValueError:
+                pass
+
+        # Single coding agent start: "Started coding agent for feature #X"
         if line.startswith("Started coding agent for feature #"):
-            match = re.search(r'#(\d+)', line)
-            if match:
+            m = re.search(r'#(\d+)', line)
+            if m:
                 try:
-                    feature_id = int(match.group(1))
+                    feature_id = int(m.group(1))
                     return await self._handle_agent_start(feature_id, line, agent_type="coding")
                 except ValueError:
                     pass
@@ -144,12 +165,23 @@ class AgentTracker:
             is_success = testing_complete_match.group(2) == "completed"
             return await self._handle_agent_complete(feature_id, is_success, agent_type="testing")
 
+        # Batch features complete: "Features #5, #8, #12 completed/failed"
+        batch_complete_match = BATCH_FEATURES_COMPLETE_PATTERN.match(line)
+        if batch_complete_match:
+            try:
+                feature_ids = [int(x.strip().lstrip('#')) for x in batch_complete_match.group(1).split(',')]
+                is_success = batch_complete_match.group(2) == "completed"
+                if feature_ids:
+                    return await self._handle_batch_agent_complete(feature_ids, is_success, "coding")
+            except ValueError:
+                pass
+
         # Coding agent complete: "Feature #X completed/failed" (without "testing" keyword)
         if line.startswith("Feature #") and ("completed" in line or "failed" in line) and "testing" not in line:
-            match = re.search(r'#(\d+)', line)
-            if match:
+            m = re.search(r'#(\d+)', line)
+            if m:
                 try:
-                    feature_id = int(match.group(1))
+                    feature_id = int(m.group(1))
                     is_success = "completed" in line
                     return await self._handle_agent_complete(feature_id, is_success, agent_type="coding")
                 except ValueError:
@@ -183,12 +215,17 @@ class AgentTracker:
                     'name': AGENT_MASCOTS[agent_index % len(AGENT_MASCOTS)],
                     'agent_index': agent_index,
                     'agent_type': 'coding',
+                    'feature_ids': [feature_id],
                     'state': 'thinking',
                     'feature_name': f'Feature #{feature_id}',
                     'last_thought': None,
                 }
 
             agent = self.active_agents[key]
+
+            # Update current_feature_id for batch agents when output comes from a different feature
+            if 'current_feature_id' in agent and feature_id in agent.get('feature_ids', []):
+                agent['current_feature_id'] = feature_id
 
             # Detect state and thought from content
             state = 'working'
@@ -213,6 +250,7 @@ class AgentTracker:
                     'agentName': agent['name'],
                     'agentType': agent['agent_type'],
                     'featureId': feature_id,
+                    'featureIds': agent.get('feature_ids', [feature_id]),
                     'featureName': agent['feature_name'],
                     'state': state,
                     'thought': thought,
@@ -269,6 +307,7 @@ class AgentTracker:
                 'name': AGENT_MASCOTS[agent_index % len(AGENT_MASCOTS)],
                 'agent_index': agent_index,
                 'agent_type': agent_type,
+                'feature_ids': [feature_id],
                 'state': 'thinking',
                 'feature_name': feature_name,
                 'last_thought': 'Starting work...',
@@ -280,9 +319,52 @@ class AgentTracker:
                 'agentName': AGENT_MASCOTS[agent_index % len(AGENT_MASCOTS)],
                 'agentType': agent_type,
                 'featureId': feature_id,
+                'featureIds': [feature_id],
                 'featureName': feature_name,
                 'state': 'thinking',
                 'thought': 'Starting work...',
+                'timestamp': datetime.now().isoformat(),
+            }
+
+    async def _handle_batch_agent_start(self, feature_ids: list[int], agent_type: str = "coding") -> dict | None:
+        """Handle batch agent start message from orchestrator."""
+        if not feature_ids:
+            return None
+        primary_id = feature_ids[0]
+        async with self._lock:
+            key = (primary_id, agent_type)
+            agent_index = self._next_agent_index
+            self._next_agent_index += 1
+
+            feature_name = f'Features {", ".join(f"#{fid}" for fid in feature_ids)}'
+
+            self.active_agents[key] = {
+                'name': AGENT_MASCOTS[agent_index % len(AGENT_MASCOTS)],
+                'agent_index': agent_index,
+                'agent_type': agent_type,
+                'feature_ids': list(feature_ids),
+                'current_feature_id': primary_id,
+                'state': 'thinking',
+                'feature_name': feature_name,
+                'last_thought': 'Starting batch work...',
+            }
+
+            # Register all feature IDs so output lines can find this agent
+            for fid in feature_ids:
+                secondary_key = (fid, agent_type)
+                if secondary_key != key:
+                    self.active_agents[secondary_key] = self.active_agents[key]
+
+            return {
+                'type': 'agent_update',
+                'agentIndex': agent_index,
+                'agentName': AGENT_MASCOTS[agent_index % len(AGENT_MASCOTS)],
+                'agentType': agent_type,
+                'featureId': primary_id,
+                'featureIds': list(feature_ids),
+                'featureName': feature_name,
+                'state': 'thinking',
+                'thought': 'Starting batch work...',
                 'timestamp': datetime.now().isoformat(),
             }
 
@@ -307,6 +389,7 @@ class AgentTracker:
                     'agentName': agent['name'],
                     'agentType': agent.get('agent_type', agent_type),
                     'featureId': feature_id,
+                    'featureIds': agent.get('feature_ids', [feature_id]),
                     'featureName': agent['feature_name'],
                     'state': state,
                     'thought': 'Completed successfully!' if is_success else 'Failed to complete',
@@ -323,9 +406,53 @@ class AgentTracker:
                     'agentName': 'Unknown',
                     'agentType': agent_type,
                     'featureId': feature_id,
+                    'featureIds': [feature_id],
                     'featureName': f'Feature #{feature_id}',
                     'state': state,
                     'thought': 'Completed successfully!' if is_success else 'Failed to complete',
+                    'timestamp': datetime.now().isoformat(),
+                    'synthetic': True,
+                }
+
+    async def _handle_batch_agent_complete(self, feature_ids: list[int], is_success: bool, agent_type: str = "coding") -> dict | None:
+        """Handle batch agent completion."""
+        if not feature_ids:
+            return None
+        primary_id = feature_ids[0]
+        async with self._lock:
+            state = 'success' if is_success else 'error'
+            key = (primary_id, agent_type)
+
+            if key in self.active_agents:
+                agent = self.active_agents[key]
+                result = {
+                    'type': 'agent_update',
+                    'agentIndex': agent['agent_index'],
+                    'agentName': agent['name'],
+                    'agentType': agent.get('agent_type', agent_type),
+                    'featureId': primary_id,
+                    'featureIds': agent.get('feature_ids', list(feature_ids)),
+                    'featureName': agent['feature_name'],
+                    'state': state,
+                    'thought': 'Batch completed successfully!' if is_success else 'Batch failed to complete',
+                    'timestamp': datetime.now().isoformat(),
+                }
+                # Clean up all keys for this batch
+                for fid in feature_ids:
+                    self.active_agents.pop((fid, agent_type), None)
+                return result
+            else:
+                # Synthetic completion
+                return {
+                    'type': 'agent_update',
+                    'agentIndex': -1,
+                    'agentName': 'Unknown',
+                    'agentType': agent_type,
+                    'featureId': primary_id,
+                    'featureIds': list(feature_ids),
+                    'featureName': f'Features {", ".join(f"#{fid}" for fid in feature_ids)}',
+                    'state': state,
+                    'thought': 'Batch completed successfully!' if is_success else 'Batch failed to complete',
                     'timestamp': datetime.now().isoformat(),
                     'synthetic': True,
                 }
@@ -476,7 +603,7 @@ class OrchestratorTracker:
         timestamp = datetime.now().isoformat()
 
         # Add to recent events (keep last 5)
-        event = {
+        event: dict[str, str | int] = {
             'eventType': event_type,
             'message': message,
             'timestamp': timestamp,
@@ -790,15 +917,6 @@ class ConnectionManager:
 # Global connection manager
 manager = ConnectionManager()
 
-# Root directory
-ROOT_DIR = Path(__file__).parent.parent
-
-
-def validate_project_name(name: str) -> bool:
-    """Validate project name to prevent path traversal."""
-    return bool(re.match(r'^[a-zA-Z0-9_-]{1,50}$', name))
-
-
 async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Path):
     """Poll database for progress changes and send updates."""
     count_passing_tests = _get_count_passing_tests()
@@ -881,7 +999,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
                 agent_index, _ = await agent_tracker.get_agent_info(feature_id)
 
             # Send the raw log line with optional feature/agent attribution
-            log_msg = {
+            log_msg: dict[str, str | int] = {
                 "type": "log",
                 "line": line,
                 "timestamp": datetime.now().isoformat(),

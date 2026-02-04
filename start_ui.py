@@ -202,7 +202,7 @@ def build_frontend() -> bool:
         trigger_file = "dist/ directory missing"
     elif src_dir.exists():
         # Find the newest file in dist/ directory
-        newest_dist_mtime = 0
+        newest_dist_mtime: float = 0
         for dist_file in dist_dir.rglob("*"):
             try:
                 if dist_file.is_file():

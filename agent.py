@@ -23,14 +23,27 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
 from client import create_client
-from progress import count_passing_tests, has_features, print_progress_summary, print_session_header
+from progress import (
+    count_passing_tests,
+    has_features,
+    print_progress_summary,
+    print_session_header,
+)
 from prompts import (
     copy_spec_to_project,
+    get_batch_feature_prompt,
     get_coding_prompt,
     get_initializer_prompt,
     get_research_prompt,
     get_single_feature_prompt,
     get_testing_prompt,
+)
+from rate_limit_utils import (
+    calculate_error_backoff,
+    calculate_rate_limit_backoff,
+    clamp_retry_delay,
+    is_rate_limit_error,
+    parse_retry_after,
 )
 
 # Configuration
@@ -107,8 +120,19 @@ async def run_agent_session(
         return "continue", response_text
 
     except Exception as e:
-        print(f"Error during agent session: {e}")
-        return "error", str(e)
+        error_str = str(e)
+        print(f"Error during agent session: {error_str}")
+
+        # Detect rate limit errors from exception message
+        if is_rate_limit_error(error_str):
+            # Try to extract retry-after time from error
+            retry_seconds = parse_retry_after(error_str)
+            if retry_seconds is not None:
+                return "rate_limit", str(retry_seconds)
+            else:
+                return "rate_limit", "unknown"
+
+        return "error", error_str
 
 
 async def run_autonomous_agent(
@@ -117,8 +141,10 @@ async def run_autonomous_agent(
     max_iterations: Optional[int] = None,
     yolo_mode: bool = False,
     feature_id: Optional[int] = None,
+    feature_ids: Optional[list[int]] = None,
     agent_type: Optional[str] = None,
     testing_feature_id: Optional[int] = None,
+    testing_feature_ids: Optional[list[int]] = None,
     testing_mode: str = "full",
 ) -> None:
     """
@@ -130,8 +156,10 @@ async def run_autonomous_agent(
         max_iterations: Maximum number of iterations (None for unlimited)
         yolo_mode: If True, skip browser testing in coding agent prompts
         feature_id: If set, work only on this specific feature (used by orchestrator for coding agents)
+        feature_ids: If set, work on these features in batch (used by orchestrator for batch mode)
         agent_type: Type of agent: "initializer", "coding", "testing", "research", or None (auto-detect)
-        testing_feature_id: For testing agents, the pre-claimed feature ID to test
+        testing_feature_id: For testing agents, the pre-claimed feature ID to test (legacy single mode)
+        testing_feature_ids: For testing agents, list of feature IDs to batch test
         testing_mode: Testing mode - "full" or "smart"
     """
     print("\n" + "=" * 70)
@@ -143,7 +171,9 @@ async def run_autonomous_agent(
         print(f"Agent type: {agent_type}")
     if yolo_mode:
         print("Mode: YOLO (testing agents disabled)")
-    if feature_id:
+    if feature_ids and len(feature_ids) > 1:
+        print(f"Feature batch: {', '.join(f'#{fid}' for fid in feature_ids)}")
+    elif feature_id:
         print(f"Feature assignment: #{feature_id}")
     if max_iterations:
         print(f"Max iterations: {max_iterations}")
@@ -194,6 +224,8 @@ async def run_autonomous_agent(
 
     # Main loop
     iteration = 0
+    rate_limit_retries = 0  # Track consecutive rate limit errors for exponential backoff
+    error_retries = 0  # Track consecutive non-rate-limit errors
 
     while True:
         iteration += 1
@@ -223,6 +255,8 @@ async def run_autonomous_agent(
         import os
         if agent_type == "testing":
             agent_id = f"testing-{os.getpid()}"  # Unique ID for testing agents
+        elif feature_ids and len(feature_ids) > 1:
+            agent_id = f"batch-{feature_ids[0]}"
         elif feature_id:
             agent_id = f"feature-{feature_id}"
         else:
@@ -255,15 +289,19 @@ async def run_autonomous_agent(
         if agent_type == "initializer":
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
-            prompt = get_testing_prompt(project_dir, testing_feature_id)
+            prompt = get_testing_prompt(project_dir, testing_feature_id, testing_feature_ids)
         elif agent_type == "research":
             prompt = get_research_prompt(project_dir)
-        elif feature_id:
+        elif feature_ids and len(feature_ids) > 1:
+            # Batch mode (used by orchestrator for multi-feature coding agents)
+            prompt = get_batch_feature_prompt(feature_ids, project_dir, yolo_mode)
+        elif feature_id or (feature_ids is not None and len(feature_ids) == 1):
             # Single-feature mode (used by orchestrator for coding agents)
-            prompt = get_single_feature_prompt(feature_id, project_dir, yolo_mode)
+            fid = feature_id if feature_id is not None else feature_ids[0]  # type: ignore[index]
+            prompt = get_single_feature_prompt(fid, project_dir, yolo_mode)
         else:
             # General coding prompt (legacy path)
-            prompt = get_coding_prompt(project_dir)
+            prompt = get_coding_prompt(project_dir, yolo_mode=yolo_mode)
 
         # Run session with async context manager
         # Wrap in try/except to handle MCP server startup failures gracefully
@@ -285,13 +323,28 @@ async def run_autonomous_agent(
 
         # Handle status
         if status == "continue":
+            # Reset error retries on success; rate-limit retries reset only if no signal
+            error_retries = 0
+            reset_rate_limit_retries = True
+
             delay_seconds = AUTO_CONTINUE_DELAY_SECONDS
             target_time_str = None
 
-            if "limit reached" in response.lower():
-                print("Claude Agent SDK indicated limit reached.")
+            # Check for rate limit indicators in response text
+            if is_rate_limit_error(response):
+                print("Claude Agent SDK indicated rate limit reached.")
+                reset_rate_limit_retries = False
 
-                # Try to parse reset time from response
+                # Try to extract retry-after from response text first
+                retry_seconds = parse_retry_after(response)
+                if retry_seconds is not None:
+                    delay_seconds = clamp_retry_delay(retry_seconds)
+                else:
+                    # Use exponential backoff when retry-after unknown
+                    delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
+                    rate_limit_retries += 1
+
+                # Try to parse reset time from response (more specific format)
                 match = re.search(
                     r"(?i)\bresets(?:\s+at)?\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
                     response,
@@ -320,9 +373,7 @@ async def run_autonomous_agent(
                             target += timedelta(days=1)
 
                         delta = target - now
-                        delay_seconds = min(
-                            delta.total_seconds(), 24 * 60 * 60
-                        )  # Clamp to 24 hours max
+                        delay_seconds = min(max(int(delta.total_seconds()), 1), 24 * 60 * 60)
                         target_time_str = target.strftime("%B %d, %Y at %I:%M %p %Z")
 
                     except Exception as e:
@@ -351,20 +402,56 @@ async def run_autonomous_agent(
                 print("The autonomous agent has finished its work.")
                 break
 
-            # Single-feature mode OR testing agent: exit after one session
-            if feature_id is not None or agent_type == "testing":
+            # Single-feature mode, batch mode, or testing agent: exit after one session
+            if feature_ids and len(feature_ids) > 1:
+                print(f"\nBatch mode: Features {', '.join(f'#{fid}' for fid in feature_ids)} session complete.")
+                break
+            elif feature_id is not None or (feature_ids is not None and len(feature_ids) == 1):
+                fid = feature_id if feature_id is not None else feature_ids[0]  # type: ignore[index]
                 if agent_type == "testing":
                     print("\nTesting agent complete. Terminating session.")
                 else:
-                    print(f"\nSingle-feature mode: Feature #{feature_id} session complete.")
+                    print(f"\nSingle-feature mode: Feature #{fid} session complete.")
                 break
+            elif agent_type == "testing":
+                print("\nTesting agent complete. Terminating session.")
+                break
+
+            # Reset rate limit retries only if no rate limit signal was detected
+            if reset_rate_limit_retries:
+                rate_limit_retries = 0
+
+            await asyncio.sleep(delay_seconds)
+
+        elif status == "rate_limit":
+            # Smart rate limit handling with exponential backoff
+            # Reset error counter so mixed events don't inflate delays
+            error_retries = 0
+            if response != "unknown":
+                try:
+                    delay_seconds = clamp_retry_delay(int(response))
+                except (ValueError, TypeError):
+                    # Malformed value - fall through to exponential backoff
+                    response = "unknown"
+            if response == "unknown":
+                # Use exponential backoff when retry-after unknown or malformed
+                delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
+                rate_limit_retries += 1
+                print(f"\nRate limit hit. Backoff wait: {delay_seconds} seconds (attempt #{rate_limit_retries})...")
+            else:
+                print(f"\nRate limit hit. Waiting {delay_seconds} seconds before retry...")
 
             await asyncio.sleep(delay_seconds)
 
         elif status == "error":
+            # Non-rate-limit errors: linear backoff capped at 5 minutes
+            # Reset rate limit counter so mixed events don't inflate delays
+            rate_limit_retries = 0
+            error_retries += 1
+            delay_seconds = calculate_error_backoff(error_retries)
             print("\nSession encountered an error")
-            print("Will retry with a fresh session...")
-            await asyncio.sleep(AUTO_CONTINUE_DELAY_SECONDS)
+            print(f"Will retry in {delay_seconds}s (attempt #{error_retries})...")
+            await asyncio.sleep(delay_seconds)
 
         # Small delay between sessions
         if max_iterations is None or iteration < max_iterations:

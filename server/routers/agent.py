@@ -6,7 +6,6 @@ API endpoints for agent control (start/stop/pause/resume).
 Uses project registry for path lookups.
 """
 
-import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -19,25 +18,17 @@ from ..schemas import (
     ResearchStartRequest,
     ResearchStatus,
 )
+from ..services.chat_constants import ROOT_DIR
 from ..services.process_manager import get_manager, get_research_manager
+from ..utils.project_helpers import get_project_path as _get_project_path
+from ..utils.validation import validate_project_name
 
 
-def _get_project_path(project_name: str) -> Path | None:
-    """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from registry import get_project_path
-    return get_project_path(project_name)
-
-
-def _get_settings_defaults() -> tuple[bool, str, int, str]:
+def _get_settings_defaults() -> tuple[bool, str, int, str, bool, int]:
     """Get defaults from global settings.
 
     Returns:
-        Tuple of (yolo_mode, model, testing_agent_ratio, testing_mode)
+        Tuple of (yolo_mode, model, testing_agent_ratio, testing_mode, playwright_headless, batch_size)
     """
     import sys
     root = Path(__file__).parent.parent.parent
@@ -59,23 +50,17 @@ def _get_settings_defaults() -> tuple[bool, str, int, str]:
     # Get testing mode (full, smart, minimal, off)
     testing_mode = settings.get("testing_mode", "full")
 
-    return yolo_mode, model, testing_agent_ratio, testing_mode
+    playwright_headless = (settings.get("playwright_headless") or "true").lower() == "true"
+
+    try:
+        batch_size = int(settings.get("batch_size", "3"))
+    except (ValueError, TypeError):
+        batch_size = 3
+
+    return yolo_mode, model, testing_agent_ratio, testing_mode, playwright_headless, batch_size
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
-
-# Root directory for process manager
-ROOT_DIR = Path(__file__).parent.parent.parent
-
-
-def validate_project_name(name: str) -> str:
-    """Validate and sanitize project name to prevent path traversal."""
-    if not re.match(r'^[a-zA-Z0-9_-]{1,50}$', name):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid project name"
-        )
-    return name
 
 
 def get_project_manager(project_name: str):
@@ -122,7 +107,7 @@ async def start_agent(
     manager = get_project_manager(project_name)
 
     # Get defaults from global settings if not provided in request
-    default_yolo, default_model, default_testing_ratio, default_testing_mode = _get_settings_defaults()
+    default_yolo, default_model, default_testing_ratio, default_testing_mode, playwright_headless, default_batch_size = _get_settings_defaults()
 
     yolo_mode = request.yolo_mode if request.yolo_mode is not None else default_yolo
     model = request.model if request.model else default_model
@@ -130,12 +115,16 @@ async def start_agent(
     testing_agent_ratio = request.testing_agent_ratio if request.testing_agent_ratio is not None else default_testing_ratio
     testing_mode = request.testing_mode if request.testing_mode else default_testing_mode
 
+    batch_size = default_batch_size
+
     success, message = await manager.start(
         yolo_mode=yolo_mode,
         model=model,
         max_concurrency=max_concurrency,
         testing_agent_ratio=testing_agent_ratio,
         testing_mode=testing_mode,
+        playwright_headless=playwright_headless,
+        batch_size=batch_size,
     )
 
     # Notify scheduler of manual start (to prevent auto-stop during scheduled window)

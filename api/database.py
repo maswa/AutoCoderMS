@@ -8,7 +8,7 @@ SQLite database schema for feature storage using SQLAlchemy.
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
 
 def _utc_now() -> datetime:
@@ -26,13 +26,16 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    event,
     text,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 from sqlalchemy.types import JSON
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0 style declarative base."""
+    pass
 
 
 class Feature(Base):
@@ -180,7 +183,8 @@ class ScheduleOverride(Base):
 
 def get_database_path(project_dir: Path) -> Path:
     """Return the path to the SQLite database for a project."""
-    return project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    return get_features_db_path(project_dir)
 
 
 def get_database_url(project_dir: Path) -> str:
@@ -307,11 +311,11 @@ def _migrate_add_schedules_tables(engine) -> None:
 
     # Create schedules table if missing
     if "schedules" not in existing_tables:
-        Schedule.__table__.create(bind=engine)
+        Schedule.__table__.create(bind=engine)  # type: ignore[attr-defined]
 
     # Create schedule_overrides table if missing
     if "schedule_overrides" not in existing_tables:
-        ScheduleOverride.__table__.create(bind=engine)
+        ScheduleOverride.__table__.create(bind=engine)  # type: ignore[attr-defined]
 
     # Add crash_count column if missing (for upgrades)
     if "schedules" in existing_tables:
@@ -330,6 +334,35 @@ def _migrate_add_schedules_tables(engine) -> None:
                     text("ALTER TABLE schedules ADD COLUMN max_concurrency INTEGER DEFAULT 3")
                 )
                 conn.commit()
+
+
+def _configure_sqlite_immediate_transactions(engine) -> None:
+    """Configure engine for IMMEDIATE transactions via event hooks.
+
+    Per SQLAlchemy docs: https://docs.sqlalchemy.org/en/20/dialects/sqlite.html
+
+    This replaces fragile pysqlite implicit transaction handling with explicit
+    BEGIN IMMEDIATE at transaction start. Benefits:
+    - Acquires write lock immediately, preventing stale reads
+    - Works correctly regardless of prior ORM operations
+    - Future-proof: won't break when pysqlite legacy mode is removed in Python 3.16
+    """
+    @event.listens_for(engine, "connect")
+    def do_connect(dbapi_connection, connection_record):
+        # Disable pysqlite's implicit transaction handling
+        dbapi_connection.isolation_level = None
+
+        # Set busy_timeout on raw connection before any transactions
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA busy_timeout=30000")
+        finally:
+            cursor.close()
+
+    @event.listens_for(engine, "begin")
+    def do_begin(conn):
+        # Use IMMEDIATE for all transactions to prevent stale reads
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def create_database(project_dir: Path) -> tuple:
@@ -351,21 +384,41 @@ def create_database(project_dir: Path) -> tuple:
         return _engine_cache[cache_key]
 
     db_url = get_database_url(project_dir)
-    engine = create_engine(db_url, connect_args={
-        "check_same_thread": False,
-        "timeout": 30  # Wait up to 30s for locks
-    })
-    Base.metadata.create_all(bind=engine)
+
+    # Ensure parent directory exists (for .autocoder/ layout)
+    db_path = get_database_path(project_dir)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Choose journal mode based on filesystem type
     # WAL mode doesn't work reliably on network filesystems and can cause corruption
     is_network = _is_network_path(project_dir)
     journal_mode = "DELETE" if is_network else "WAL"
 
+    engine = create_engine(db_url, connect_args={
+        "check_same_thread": False,
+        "timeout": 30  # Wait up to 30s for locks
+    })
+
+    # Set journal mode BEFORE configuring event hooks
+    # PRAGMA journal_mode must run outside of a transaction, and our event hooks
+    # start a transaction with BEGIN IMMEDIATE on every operation
     with engine.connect() as conn:
-        conn.execute(text(f"PRAGMA journal_mode={journal_mode}"))
-        conn.execute(text("PRAGMA busy_timeout=30000"))
-        conn.commit()
+        # Get raw DBAPI connection to execute PRAGMA outside transaction
+        raw_conn = conn.connection.dbapi_connection
+        if raw_conn is None:
+            raise RuntimeError("Failed to get raw DBAPI connection")
+        cursor = raw_conn.cursor()
+        try:
+            cursor.execute(f"PRAGMA journal_mode={journal_mode}")
+            cursor.execute("PRAGMA busy_timeout=30000")
+        finally:
+            cursor.close()
+
+    # Configure IMMEDIATE transactions via event hooks AFTER setting PRAGMAs
+    # This must happen before create_all() and migrations run
+    _configure_sqlite_immediate_transactions(engine)
+
+    Base.metadata.create_all(bind=engine)
 
     # Migrate existing databases
     _migrate_add_in_progress_column(engine)
@@ -417,7 +470,7 @@ def set_session_maker(session_maker: sessionmaker) -> None:
     _session_maker = session_maker
 
 
-def get_db() -> Session:
+def get_db() -> Generator[Session, None, None]:
     """
     Dependency for FastAPI to get database session.
 
@@ -429,5 +482,55 @@ def get_db() -> Session:
     db = _session_maker()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
+
+
+# =============================================================================
+# Atomic Transaction Helpers for Parallel Mode
+# =============================================================================
+# These helpers prevent database corruption when multiple processes access the
+# same SQLite database concurrently. They use IMMEDIATE transactions which
+# acquire write locks at the start (preventing stale reads) and atomic
+# UPDATE ... WHERE clauses (preventing check-then-modify races).
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def atomic_transaction(session_maker):
+    """Context manager for atomic SQLite transactions.
+
+    Acquires a write lock immediately via BEGIN IMMEDIATE (configured by
+    engine event hooks), preventing stale reads in read-modify-write patterns.
+    This is essential for preventing race conditions in parallel mode.
+
+    Args:
+        session_maker: SQLAlchemy sessionmaker
+
+    Yields:
+        SQLAlchemy session with automatic commit/rollback
+
+    Example:
+        with atomic_transaction(session_maker) as session:
+            # All reads in this block are protected by write lock
+            feature = session.query(Feature).filter(...).first()
+            feature.priority = new_priority
+            # Commit happens automatically on exit
+    """
+    session = session_maker()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass  # Don't let rollback failure mask original error
+        raise
+    finally:
+        session.close()

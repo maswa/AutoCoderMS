@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
@@ -200,10 +201,10 @@ export function NewProjectModal({
     }
   }
 
-  // Full-screen chat view
+  // Full-screen chat view - use portal to render at body level
   if (step === 'chat') {
-    return (
-      <div className="fixed inset-0 z-50 bg-background">
+    return createPortal(
+      <div className="fixed inset-0 z-50 bg-background flex flex-col">
         <SpecCreationChat
           projectName={projectName.trim()}
           onComplete={handleSpecComplete}
@@ -213,7 +214,8 @@ export function NewProjectModal({
           initializerError={initializerError}
           onRetryInitializer={handleRetryInitializer}
         />
-      </div>
+      </div>,
+      document.body
     )
   }
 

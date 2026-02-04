@@ -12,8 +12,6 @@ import base64
 import json
 import logging
 import re
-import sys
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -27,13 +25,8 @@ from ..services.terminal_manager import (
     rename_terminal,
     stop_terminal_session,
 )
-
-# Add project root to path for registry import
-_root = Path(__file__).parent.parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-
-from registry import get_project_path as registry_get_project_path
+from ..utils.project_helpers import get_project_path as _get_project_path
+from ..utils.validation import is_valid_project_name as validate_project_name
 
 logger = logging.getLogger(__name__)
 
@@ -46,27 +39,6 @@ class TerminalCloseCode:
     INVALID_PROJECT_NAME = 4000
     PROJECT_NOT_FOUND = 4004
     FAILED_TO_START = 4500
-
-
-def _get_project_path(project_name: str) -> Path | None:
-    """Get project path from registry."""
-    return registry_get_project_path(project_name)
-
-
-def validate_project_name(name: str) -> bool:
-    """
-    Validate project name to prevent path traversal attacks.
-
-    Allows only alphanumeric characters, underscores, and hyphens.
-    Maximum length of 50 characters.
-
-    Args:
-        name: The project name to validate
-
-    Returns:
-        True if valid, False otherwise
-    """
-    return bool(re.match(r"^[a-zA-Z0-9_-]{1,50}$", name))
 
 
 def validate_terminal_id(terminal_id: str) -> bool:

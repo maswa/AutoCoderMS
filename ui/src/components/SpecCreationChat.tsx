@@ -231,7 +231,7 @@ export function SpecCreationChat({
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-screen bg-background">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b-2 border-border bg-card">
         <div className="flex items-center gap-3">
@@ -306,7 +306,7 @@ export function SpecCreationChat({
       )}
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto py-4">
+      <div className="flex-1 overflow-y-auto py-4 min-h-0">
         {messages.length === 0 && !isLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <Card className="p-6 max-w-md">
@@ -454,9 +454,8 @@ export function SpecCreationChat({
 
       {/* Completion footer */}
       {isComplete && (
-        <div className={`p-4 border-t-2 border-border ${
-          initializerStatus === 'error' ? 'bg-destructive' : 'bg-green-500'
-        }`}>
+        <div className={`p-4 border-t-2 border-border ${initializerStatus === 'error' ? 'bg-destructive' : 'bg-green-500'
+          }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {initializerStatus === 'starting' ? (

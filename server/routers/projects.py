@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException
 
@@ -24,11 +25,12 @@ from ..schemas import (
 )
 
 # Lazy imports to avoid circular dependencies
+# These are initialized by _init_imports() before first use.
 _imports_initialized = False
-_check_spec_exists = None
-_scaffold_project_prompts = None
-_get_project_prompts_dir = None
-_count_passing_tests = None
+_check_spec_exists: Callable[..., Any] | None = None
+_scaffold_project_prompts: Callable[..., Any] | None = None
+_get_project_prompts_dir: Callable[..., Any] | None = None
+_count_passing_tests: Callable[..., Any] | None = None
 
 
 def _init_imports():
@@ -99,6 +101,7 @@ def validate_project_name(name: str) -> str:
 def get_project_stats(project_dir: Path) -> ProjectStats:
     """Get statistics for a project."""
     _init_imports()
+    assert _count_passing_tests is not None  # guaranteed by _init_imports()
     passing, in_progress, total = _count_passing_tests(project_dir)
     percentage = (passing / total * 100) if total > 0 else 0.0
     return ProjectStats(
@@ -113,6 +116,7 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
 async def list_projects():
     """List all registered projects."""
     _init_imports()
+    assert _check_spec_exists is not None  # guaranteed by _init_imports()
     (_, _, _, list_registered_projects, validate_project_path,
      get_project_concurrency, _) = _get_registry_functions()
 
@@ -145,6 +149,7 @@ async def list_projects():
 async def create_project(project: ProjectCreate):
     """Create a new project at the specified path."""
     _init_imports()
+    assert _scaffold_project_prompts is not None  # guaranteed by _init_imports()
     (register_project, _, get_project_path, list_registered_projects,
      _, _, _) = _get_registry_functions()
 
@@ -225,6 +230,8 @@ async def create_project(project: ProjectCreate):
 async def get_project(name: str):
     """Get detailed information about a project."""
     _init_imports()
+    assert _check_spec_exists is not None  # guaranteed by _init_imports()
+    assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
     (_, _, get_project_path, _, _, get_project_concurrency, _) = _get_registry_functions()
 
     name = validate_project_name(name)
@@ -269,8 +276,8 @@ async def delete_project(name: str, delete_files: bool = False):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     # Check if agent is running
-    lock_file = project_dir / ".agent.lock"
-    if lock_file.exists():
+    from autocoder_paths import has_agent_running
+    if has_agent_running(project_dir):
         raise HTTPException(
             status_code=409,
             detail="Cannot delete project while agent is running. Stop the agent first."
@@ -296,6 +303,7 @@ async def delete_project(name: str, delete_files: bool = False):
 async def get_project_prompts(name: str):
     """Get the content of project prompt files."""
     _init_imports()
+    assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
     (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
@@ -307,7 +315,7 @@ async def get_project_prompts(name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    prompts_dir = _get_project_prompts_dir(project_dir)
+    prompts_dir: Path = _get_project_prompts_dir(project_dir)
 
     def read_file(filename: str) -> str:
         filepath = prompts_dir / filename
@@ -329,6 +337,7 @@ async def get_project_prompts(name: str):
 async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
     """Update project prompt files."""
     _init_imports()
+    assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
     (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
@@ -468,8 +477,8 @@ async def reset_project(name: str, full_reset: bool = False):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     # Check if agent is running
-    lock_file = project_dir / ".agent.lock"
-    if lock_file.exists():
+    from autocoder_paths import has_agent_running
+    if has_agent_running(project_dir):
         raise HTTPException(
             status_code=409,
             detail="Cannot reset project while agent is running. Stop the agent first."
@@ -485,36 +494,58 @@ async def reset_project(name: str, full_reset: bool = False):
 
     deleted_files: list[str] = []
 
-    # Files to delete in quick reset
-    quick_reset_files = [
-        "features.db",
-        "features.db-wal",  # WAL mode journal file
-        "features.db-shm",  # WAL mode shared memory file
-        "assistant.db",
-        "assistant.db-wal",
-        "assistant.db-shm",
-        ".claude_settings.json",
-        ".claude_assistant_settings.json",
+    from autocoder_paths import (
+        get_assistant_db_path,
+        get_claude_assistant_settings_path,
+        get_claude_settings_path,
+        get_features_db_path,
+    )
+
+    # Build list of files to delete using path helpers (finds files at current location)
+    # Plus explicit old-location fallbacks for backward compatibility
+    db_path = get_features_db_path(project_dir)
+    asst_path = get_assistant_db_path(project_dir)
+    reset_files: list[Path] = [
+        db_path,
+        db_path.with_suffix(".db-wal"),
+        db_path.with_suffix(".db-shm"),
+        asst_path,
+        asst_path.with_suffix(".db-wal"),
+        asst_path.with_suffix(".db-shm"),
+        get_claude_settings_path(project_dir),
+        get_claude_assistant_settings_path(project_dir),
+        # Also clean old root-level locations if they exist
+        project_dir / "features.db",
+        project_dir / "features.db-wal",
+        project_dir / "features.db-shm",
+        project_dir / "assistant.db",
+        project_dir / "assistant.db-wal",
+        project_dir / "assistant.db-shm",
+        project_dir / ".claude_settings.json",
+        project_dir / ".claude_assistant_settings.json",
     ]
 
-    for filename in quick_reset_files:
-        file_path = project_dir / filename
+    for file_path in reset_files:
         if file_path.exists():
             try:
+                relative = file_path.relative_to(project_dir)
                 file_path.unlink()
-                deleted_files.append(filename)
+                deleted_files.append(str(relative))
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to delete {filename}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to delete {file_path.name}: {e}")
 
     # Full reset: also delete prompts directory
     if full_reset:
-        prompts_dir = project_dir / "prompts"
-        if prompts_dir.exists():
-            try:
-                shutil.rmtree(prompts_dir)
-                deleted_files.append("prompts/")
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to delete prompts/: {e}")
+        from autocoder_paths import get_prompts_dir
+        # Delete prompts from both possible locations
+        for prompts_dir in [get_prompts_dir(project_dir), project_dir / "prompts"]:
+            if prompts_dir.exists():
+                try:
+                    relative = prompts_dir.relative_to(project_dir)
+                    shutil.rmtree(prompts_dir)
+                    deleted_files.append(f"{relative}/")
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Failed to delete prompts: {e}")
 
     return {
         "success": True,
@@ -528,6 +559,8 @@ async def reset_project(name: str, full_reset: bool = False):
 async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
     """Update project-level settings (concurrency, etc.)."""
     _init_imports()
+    assert _check_spec_exists is not None  # guaranteed by _init_imports()
+    assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
     (_, _, get_project_path, _, _, get_project_concurrency,
      set_project_concurrency) = _get_registry_functions()
 

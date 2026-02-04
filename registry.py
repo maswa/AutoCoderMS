@@ -17,8 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Integer, String, create_engine, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -39,7 +38,17 @@ AVAILABLE_MODELS = [
 VALID_MODELS = [m["id"] for m in AVAILABLE_MODELS]
 
 # Default model and settings
-DEFAULT_MODEL = "claude-opus-4-5-20251101"
+# Respect ANTHROPIC_DEFAULT_OPUS_MODEL env var for Foundry/custom deployments
+# Guard against empty/whitespace values by trimming and falling back when blank
+_env_default_model = os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL")
+if _env_default_model is not None:
+    _env_default_model = _env_default_model.strip()
+DEFAULT_MODEL = _env_default_model or "claude-opus-4-5-20251101"
+
+# Ensure env-provided DEFAULT_MODEL is in VALID_MODELS for validation consistency
+# (idempotent: only adds if missing, doesn't alter AVAILABLE_MODELS semantics)
+if DEFAULT_MODEL and DEFAULT_MODEL not in VALID_MODELS:
+    VALID_MODELS.append(DEFAULT_MODEL)
 DEFAULT_YOLO_MODE = False
 
 # SQLite connection settings
@@ -75,7 +84,9 @@ class RegistryPermissionDenied(RegistryError):
 # SQLAlchemy Model
 # =============================================================================
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0 style declarative base."""
+    pass
 
 
 class Project(Base):

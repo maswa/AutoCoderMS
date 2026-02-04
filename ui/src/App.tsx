@@ -14,7 +14,6 @@ import { SetupWizard } from './components/SetupWizard'
 import { AddFeatureForm } from './components/AddFeatureForm'
 import { FeatureModal } from './components/FeatureModal'
 import { DebugLogViewer, type TabType } from './components/DebugLogViewer'
-import { AgentThought } from './components/AgentThought'
 import { AgentMissionControl } from './components/AgentMissionControl'
 import { CelebrationOverlay } from './components/CelebrationOverlay'
 import { AssistantFAB } from './components/AssistantFAB'
@@ -30,8 +29,8 @@ import { ThemeSelector } from './components/ThemeSelector'
 import { ResearchProgressView, ResearchResultsView } from './components/research'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
-import { getDependencyGraph } from './lib/api'
-import { Loader2, Settings, Moon, Sun, RotateCcw } from 'lucide-react'
+import { getDependencyGraph, startAgent } from './lib/api'
+import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -42,6 +41,8 @@ const VIEW_MODE_KEY = 'autocoder-view-mode'
 
 // Bottom padding for main content when debug panel is collapsed (40px header + 8px margin)
 const COLLAPSED_DEBUG_PANEL_CLEARANCE = 48
+
+type InitializerStatus = 'idle' | 'starting' | 'error'
 
 // Wrapper component for ResearchProgressView that extracts route params
 function ResearchProgressRoute() {
@@ -108,6 +109,8 @@ function App() {
   const [showResetModal, setShowResetModal] = useState(false)
   const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
   const [fromResearch, setFromResearch] = useState(false)  // True when navigating from research results
+  const [specInitializerStatus, setSpecInitializerStatus] = useState<InitializerStatus>('idle')
+  const [specInitializerError, setSpecInitializerError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -407,6 +410,17 @@ function App() {
                 </>
               )}
 
+              {/* Docs link */}
+              <Button
+                onClick={() => { window.location.hash = '#/docs' }}
+                variant="outline"
+                size="sm"
+                title="Documentation"
+                aria-label="Open Documentation"
+              >
+                <BookOpen size={18} />
+              </Button>
+
               {/* Theme selector */}
               <ThemeSelector
                 themes={themes}
@@ -461,6 +475,8 @@ function App() {
               total={progress.total}
               percentage={progress.percentage}
               isConnected={wsState.isConnected}
+              logs={wsState.activeAgents.length === 0 ? wsState.logs : undefined}
+              agentStatus={wsState.activeAgents.length === 0 ? wsState.agentStatus : undefined}
             />
 
             {/* Agent Mission Control - shows orchestrator status and active agents in parallel mode */}
@@ -471,13 +487,6 @@ function App() {
               getAgentLogs={wsState.getAgentLogs}
             />
 
-            {/* Agent Thought - shows latest agent narrative (single agent mode) */}
-            {wsState.activeAgents.length === 0 && (
-              <AgentThought
-                logs={wsState.logs}
-                agentStatus={wsState.agentStatus}
-              />
-            )}
 
             {/* Initializing Features State - show when agent is running but no features yet */}
             {features &&
@@ -571,15 +580,32 @@ function App() {
           <SpecCreationChat
             projectName={selectedProject}
             fromResearch={fromResearch}
-            onComplete={() => {
-              setShowSpecChat(false)
-              setFromResearch(false)
-              // Refresh projects to update has_spec
-              queryClient.invalidateQueries({ queryKey: ['projects'] })
-              queryClient.invalidateQueries({ queryKey: ['features', selectedProject] })
+            onComplete={async (_specPath, yoloMode) => {
+              setSpecInitializerStatus('starting')
+              try {
+                await startAgent(selectedProject, {
+                  yoloMode: yoloMode ?? false,
+                  maxConcurrency: 3,
+                })
+                // Success — close chat and refresh
+                setShowSpecChat(false)
+                setFromResearch(false)
+                setSpecInitializerStatus('idle')
+                queryClient.invalidateQueries({ queryKey: ['projects'] })
+                queryClient.invalidateQueries({ queryKey: ['features', selectedProject] })
+              } catch (err) {
+                setSpecInitializerStatus('error')
+                setSpecInitializerError(err instanceof Error ? err.message : 'Failed to start agent')
+              }
             }}
-            onCancel={() => { setShowSpecChat(false); setFromResearch(false) }}
-            onExitToProject={() => { setShowSpecChat(false); setFromResearch(false) }}
+            onCancel={() => { setShowSpecChat(false); setFromResearch(false); setSpecInitializerStatus('idle') }}
+            onExitToProject={() => { setShowSpecChat(false); setFromResearch(false); setSpecInitializerStatus('idle') }}
+            initializerStatus={specInitializerStatus}
+            initializerError={specInitializerError}
+            onRetryInitializer={() => {
+              setSpecInitializerError(null)
+              setSpecInitializerStatus('idle')
+            }}
           />
         </div>
       )}

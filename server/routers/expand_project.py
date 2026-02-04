@@ -8,7 +8,6 @@ Allows adding multiple features to existing projects via natural language.
 
 import json
 import logging
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -22,26 +21,12 @@ from ..services.expand_chat_session import (
     list_expand_sessions,
     remove_expand_session,
 )
+from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/expand", tags=["expand-project"])
-
-# Root directory
-ROOT_DIR = Path(__file__).parent.parent.parent
-
-
-def _get_project_path(project_name: str) -> Path:
-    """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from registry import get_project_path
-    return get_project_path(project_name)
-
 
 
 
@@ -136,7 +121,8 @@ async def expand_project_websocket(websocket: WebSocket, project_name: str):
         return
 
     # Verify project has app_spec.txt
-    spec_path = project_dir / "prompts" / "app_spec.txt"
+    from autocoder_paths import get_prompts_dir
+    spec_path = get_prompts_dir(project_dir) / "app_spec.txt"
     if not spec_path.exists():
         await websocket.close(code=4004, reason="Project has no spec. Create spec first.")
         return

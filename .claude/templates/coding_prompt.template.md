@@ -49,51 +49,21 @@ Otherwise, start servers manually and document the process.
 
 #### TEST-DRIVEN DEVELOPMENT MINDSET (CRITICAL)
 
-Features are **test cases** that drive development. This is test-driven development:
+Features are **test cases** that drive development. If functionality doesn't exist, **BUILD IT** -- you are responsible for implementing ALL required functionality. Missing pages, endpoints, database tables, or components are NOT blockers; they are your job to create.
 
-- **If you can't test a feature because functionality doesn't exist → BUILD IT**
-- You are responsible for implementing ALL required functionality
-- Never assume another process will build it later
-- "Missing functionality" is NOT a blocker - it's your job to create it
-
-**Example:** Feature says "User can filter flashcards by difficulty level"
-- WRONG: "Flashcard page doesn't exist yet" → skip feature
-- RIGHT: "Flashcard page doesn't exist yet" → build flashcard page → implement filter → test feature
-
-**Note:** Your feature has been pre-assigned by the orchestrator. Use `feature_get_by_id` with your assigned feature ID to get the details.
-
-Once you've retrieved the feature, **mark it as in-progress** (if not already):
+**Note:** Your feature has been pre-assigned by the orchestrator. Use `feature_get_by_id` with your assigned feature ID to get the details. Then mark it as in-progress:
 
 ```
-# Mark feature as in-progress
 Use the feature_mark_in_progress tool with feature_id={your_assigned_id}
 ```
 
 If you get "already in-progress" error, that's OK - continue with implementation.
 
-Focus on completing one feature perfectly and completing its testing steps in this session before moving on to other features.
-It's ok if you only complete one feature in this session, as there will be more sessions later that continue to make progress.
+Focus on completing one feature perfectly in this session. It's ok if you only complete one feature, as more sessions will follow.
 
 #### When to Skip a Feature (EXTREMELY RARE)
 
-**Skipping should almost NEVER happen.** Only skip for truly external blockers you cannot control:
-
-- **External API not configured**: Third-party service credentials missing (e.g., Stripe keys, OAuth secrets)
-- **External service unavailable**: Dependency on service that's down or inaccessible
-- **Environment limitation**: Hardware or system requirement you cannot fulfill
-
-**NEVER skip because:**
-
-| Situation | Wrong Action | Correct Action |
-|-----------|--------------|----------------|
-| "Page doesn't exist" | Skip | Create the page |
-| "API endpoint missing" | Skip | Implement the endpoint |
-| "Database table not ready" | Skip | Create the migration |
-| "Component not built" | Skip | Build the component |
-| "No data to test with" | Skip | Create test data or build data entry flow |
-| "Feature X needs to be done first" | Skip | Build feature X as part of this feature |
-
-If a feature requires building other functionality first, **build that functionality**. You are the coding agent - your job is to make the feature work, not to defer it.
+Only skip for truly external blockers: missing third-party credentials (Stripe keys, OAuth secrets), unavailable external services, or unfulfillable environment requirements. **NEVER** skip because a page, endpoint, component, or data doesn't exist yet -- build it. If a feature requires other functionality first, build that functionality as part of this feature.
 
 If you must skip (truly external blocker only):
 
@@ -139,130 +109,22 @@ Use browser automation tools:
 
 ### STEP 5.5: MANDATORY VERIFICATION CHECKLIST (BEFORE MARKING ANY TEST PASSING)
 
-**You MUST complete ALL of these checks before marking any feature as "passes": true**
+**Complete ALL applicable checks before marking any feature as passing:**
 
-#### Security Verification (for protected features)
-
-- [ ] Feature respects user role permissions
-- [ ] Unauthenticated access is blocked (redirects to login)
-- [ ] API endpoint checks authorization (returns 401/403 appropriately)
-- [ ] Cannot access other users' data by manipulating URLs
-
-#### Real Data Verification (CRITICAL - NO MOCK DATA)
-
-- [ ] Created unique test data via UI (e.g., "TEST_12345_VERIFY_ME")
-- [ ] Verified the EXACT data I created appears in UI
-- [ ] Refreshed page - data persists (proves database storage)
-- [ ] Deleted the test data - verified it's gone everywhere
-- [ ] NO unexplained data appeared (would indicate mock data)
-- [ ] Dashboard/counts reflect real numbers after my changes
-- [ ] **Ran extended mock data grep (STEP 5.6) - no hits in src/ (excluding tests)**
-- [ ] **Verified no globalThis, devStore, or dev-store patterns**
-- [ ] **Server restart test passed (STEP 5.7) - data persists across restart**
-
-#### Navigation Verification
-
-- [ ] All buttons on this page link to existing routes
-- [ ] No 404 errors when clicking any interactive element
-- [ ] Back button returns to correct previous page
-- [ ] Related links (edit, view, delete) have correct IDs in URLs
-
-#### Integration Verification
-
-- [ ] Console shows ZERO JavaScript errors
-- [ ] Network tab shows successful API calls (no 500s)
-- [ ] Data returned from API matches what UI displays
-- [ ] Loading states appeared during API calls
-- [ ] Error states handle failures gracefully
+- **Security:** Feature respects role permissions; unauthenticated access blocked; API checks auth (401/403); no cross-user data leaks via URL manipulation
+- **Real Data:** Create unique test data via UI, verify it appears, refresh to confirm persistence, delete and verify removal. No unexplained data (indicates mocks). Dashboard counts reflect real numbers
+- **Mock Data Grep:** Run STEP 5.6 grep checks - no hits in src/ (excluding tests). No globalThis, devStore, or dev-store patterns
+- **Server Restart:** For data features, run STEP 5.7 - data persists across server restart
+- **Navigation:** All buttons link to existing routes, no 404s, back button works, edit/view/delete links have correct IDs
+- **Integration:** Zero JS console errors, no 500s in network tab, API data matches UI, loading/error states work
 
 ### STEP 5.6: MOCK DATA DETECTION (Before marking passing)
 
-**Run ALL these grep checks. Any hits in src/ (excluding test files) require investigation:**
-
-```bash
-# Common exclusions for test files
-EXCLUDE="--exclude=*.test.* --exclude=*.spec.* --exclude=*__test__* --exclude=*__mocks__*"
-
-# 1. In-memory storage patterns (CRITICAL - catches dev-store)
-grep -r "globalThis\." --include="*.ts" --include="*.tsx" --include="*.js" $EXCLUDE src/
-grep -r "dev-store\|devStore\|DevStore\|mock-db\|mockDb" --include="*.ts" --include="*.tsx" --include="*.js" $EXCLUDE src/
-
-# 2. Mock data variables
-grep -r "mockData\|fakeData\|sampleData\|dummyData\|testData" --include="*.ts" --include="*.tsx" --include="*.js" $EXCLUDE src/
-
-# 3. TODO/incomplete markers
-grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --include="*.tsx" --include="*.js" $EXCLUDE src/
-
-# 4. Development-only conditionals
-grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" --include="*.js" $EXCLUDE src/
-
-# 5. In-memory collections as data stores
-grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" $EXCLUDE src/ 2>/dev/null
-```
-
-**Rule:** If ANY grep returns results in production code → investigate → FIX before marking passing.
-
-**Runtime verification:**
-1. Create unique data (e.g., "TEST_12345") → verify in UI → delete → verify gone
-2. Check database directly - all displayed data must come from real DB queries
-3. If unexplained data appears, it's mock data - fix before marking passing.
+Before marking a feature passing, grep for mock/placeholder data patterns in src/ (excluding test files): `globalThis`, `devStore`, `dev-store`, `mockDb`, `mockData`, `fakeData`, `sampleData`, `dummyData`, `testData`, `TODO.*real`, `TODO.*database`, `STUB`, `MOCK`, `isDevelopment`, `isDev`. Any hits in production code must be investigated and fixed. Also create unique test data (e.g., "TEST_12345"), verify it appears in UI, then delete and confirm removal - unexplained data indicates mock implementations.
 
 ### STEP 5.7: SERVER RESTART PERSISTENCE TEST (MANDATORY for data features)
 
-**When required:** Any feature involving CRUD operations or data persistence.
-
-**This test is NON-NEGOTIABLE. It catches in-memory storage implementations that pass all other tests.**
-
-**Steps:**
-
-1. Create unique test data via UI or API (e.g., item named "RESTART_TEST_12345")
-2. Verify data appears in UI and API response
-
-3. **STOP the server completely:**
-   ```bash
-   # Kill by port (safer - only kills the dev server, not VS Code/Claude Code/etc.)
-   # Unix/macOS:
-   lsof -ti :${PORT:-3000} | xargs kill -TERM 2>/dev/null || true
-   sleep 3
-   lsof -ti :${PORT:-3000} | xargs kill -9 2>/dev/null || true
-   sleep 2
-
-   # Windows alternative (use if lsof not available):
-   # netstat -ano | findstr :${PORT:-3000} | findstr LISTENING
-   # taskkill /F /PID <pid_from_above> 2>nul
-
-   # Verify server is stopped
-   if lsof -ti :${PORT:-3000} > /dev/null 2>&1; then
-     echo "ERROR: Server still running on port ${PORT:-3000}!"
-     exit 1
-   fi
-   ```
-
-4. **RESTART the server:**
-   ```bash
-   ./init.sh &
-   sleep 15  # Allow server to fully start
-   # Verify server is responding
-   if ! curl -f http://localhost:${PORT:-3000}/api/health && ! curl -f http://localhost:${PORT:-3000}; then
-     echo "ERROR: Server failed to start after restart"
-     exit 1
-   fi
-   ```
-
-5. **Query for test data - it MUST still exist**
-   - Via UI: Navigate to data location, verify data appears
-   - Via API: `curl http://localhost:${PORT:-3000}/api/items` - verify data in response
-
-6. **If data is GONE:** Implementation uses in-memory storage → CRITICAL FAIL
-   - Run all grep commands from STEP 5.6 to identify the mock pattern
-   - You MUST fix the in-memory storage implementation before proceeding
-   - Replace in-memory storage with real database queries
-
-7. **Clean up test data** after successful verification
-
-**Why this test exists:** In-memory stores like `globalThis.devStore` pass all other tests because data persists during a single server run. Only a full server restart reveals this bug. Skipping this step WILL allow dev-store implementations to slip through.
-
-**YOLO Mode Note:** Even in YOLO mode, this verification is MANDATORY for data features. Use curl instead of browser automation.
+For any feature involving CRUD or data persistence: create unique test data (e.g., "RESTART_TEST_12345"), verify it exists, then fully stop and restart the dev server. After restart, verify the test data still exists. If data is gone, the implementation uses in-memory storage -- run STEP 5.6 greps, find the mock pattern, and replace with real database queries. Clean up test data after verification. This test catches in-memory stores like `globalThis.devStore` that pass all other tests but lose data on restart.
 
 ### STEP 6: UPDATE FEATURE STATUS (CAREFULLY!)
 

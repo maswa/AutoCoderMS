@@ -133,6 +133,13 @@ Authentication:
         help="Work on a specific feature ID only (used by orchestrator for coding agents)",
     )
 
+    parser.add_argument(
+        "--feature-ids",
+        type=str,
+        default=None,
+        help="Comma-separated feature IDs to implement in batch (e.g., '5,8,12')",
+    )
+
     # Agent type for subprocess mode
     parser.add_argument(
         "--agent-type",
@@ -145,7 +152,14 @@ Authentication:
         "--testing-feature-id",
         type=int,
         default=None,
-        help="Feature ID to regression test (used by orchestrator for testing agents)",
+        help="Feature ID to regression test (used by orchestrator for testing agents, legacy single mode)",
+    )
+
+    parser.add_argument(
+        "--testing-feature-ids",
+        type=str,
+        default=None,
+        help="Comma-separated feature IDs to regression test in batch (e.g., '5,12,18')",
     )
 
     # Testing agent configuration
@@ -162,6 +176,20 @@ Authentication:
         default="full",
         choices=["full", "smart"],
         help="Testing mode: full (always Playwright), smart (Playwright for UI only)",
+    )
+
+    parser.add_argument(
+        "--testing-batch-size",
+        type=int,
+        default=3,
+        help="Number of features per testing batch (1-5, default: 3)",
+    )
+
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=3,
+        help="Max features per coding agent batch (1-3, default: 3)",
     )
 
     return parser.parse_args()
@@ -201,6 +229,30 @@ def main() -> None:
             print("Use an absolute path or register the project first.")
             return
 
+    # Migrate project layout to .autocoder/ if needed (idempotent, safe)
+    from autocoder_paths import migrate_project_layout
+    migrated = migrate_project_layout(project_dir)
+    if migrated:
+        print(f"Migrated project files to .autocoder/: {', '.join(migrated)}", flush=True)
+
+    # Parse batch testing feature IDs (comma-separated string -> list[int])
+    testing_feature_ids: list[int] | None = None
+    if args.testing_feature_ids:
+        try:
+            testing_feature_ids = [int(x.strip()) for x in args.testing_feature_ids.split(",") if x.strip()]
+        except ValueError:
+            print(f"Error: --testing-feature-ids must be comma-separated integers, got: {args.testing_feature_ids}")
+            return
+
+    # Parse batch coding feature IDs (comma-separated string -> list[int])
+    coding_feature_ids: list[int] | None = None
+    if args.feature_ids:
+        try:
+            coding_feature_ids = [int(x.strip()) for x in args.feature_ids.split(",") if x.strip()]
+        except ValueError:
+            print(f"Error: --feature-ids must be comma-separated integers, got: {args.feature_ids}")
+            return
+
     try:
         if args.agent_type:
             # Subprocess mode - spawned by orchestrator for a specific role
@@ -211,8 +263,10 @@ def main() -> None:
                     max_iterations=args.max_iterations or 1,
                     yolo_mode=args.yolo,
                     feature_id=args.feature_id,
+                    feature_ids=coding_feature_ids,
                     agent_type=args.agent_type,
                     testing_feature_id=args.testing_feature_id,
+                    testing_feature_ids=testing_feature_ids,
                     testing_mode=args.testing_mode,
                 )
             )
@@ -233,6 +287,8 @@ def main() -> None:
                     yolo_mode=args.yolo,
                     testing_agent_ratio=args.testing_ratio,
                     testing_mode=args.testing_mode,
+                    testing_batch_size=args.testing_batch_size,
+                    batch_size=args.batch_size,
                 )
             )
     except KeyboardInterrupt:

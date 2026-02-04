@@ -13,48 +13,18 @@ import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
+from .chat_constants import API_ENV_VARS, ROOT_DIR, make_multimodal_message
 
 # Load environment variables from .env file if present
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-# Environment variables to pass through to Claude CLI for API configuration
-API_ENV_VARS = [
-    "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_AUTH_TOKEN",
-    "API_TIMEOUT_MS",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-]
-
-
-async def _make_multimodal_message(content_blocks: list[dict]) -> AsyncGenerator[dict, None]:
-    """
-    Create an async generator that yields a properly formatted multimodal message.
-
-    The Claude Agent SDK's query() method accepts either:
-    - A string (simple text)
-    - An AsyncIterable[dict] (for custom message formats)
-
-    This function wraps content blocks in the expected message format.
-    """
-    yield {
-        "type": "user",
-        "message": {"role": "user", "content": content_blocks},
-        "parent_tool_use_id": None,
-        "session_id": "default",
-    }
-
-# Root directory of the project
-ROOT_DIR = Path(__file__).parent.parent.parent
 
 
 class SpecChatSession:
@@ -130,7 +100,8 @@ class SpecChatSession:
         # Delete app_spec.txt so Claude can create it fresh
         # The SDK requires reading existing files before writing, but app_spec.txt is created new
         # Note: We keep initializer_prompt.md so Claude can read and update the template
-        prompts_dir = self.project_dir / "prompts"
+        from autocoder_paths import get_prompts_dir
+        prompts_dir = get_prompts_dir(self.project_dir)
         app_spec_path = prompts_dir / "app_spec.txt"
         if app_spec_path.exists():
             app_spec_path.unlink()
@@ -150,7 +121,9 @@ class SpecChatSession:
                 ],
             },
         }
-        settings_file = self.project_dir / ".claude_settings.json"
+        from autocoder_paths import get_claude_settings_path
+        settings_file = get_claude_settings_path(self.project_dir)
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
         with open(settings_file, "w") as f:
             json.dump(security_settings, f, indent=2)
 
@@ -181,7 +154,12 @@ class SpecChatSession:
         system_cli = shutil.which("claude")
 
         # Build environment overrides for API configuration
-        sdk_env = {var: os.getenv(var) for var in API_ENV_VARS if os.getenv(var)}
+        # Filter to only include vars that are actually set (non-None)
+        sdk_env: dict[str, str] = {}
+        for var in API_ENV_VARS:
+            value = os.getenv(var)
+            if value:
+                sdk_env[var] = value
 
         # Determine model from environment or use default
         # This allows using alternative APIs (e.g., GLM via z.ai) that may not support Claude model names
@@ -312,7 +290,7 @@ class SpecChatSession:
         # Build the message content
         if attachments and len(attachments) > 0:
             # Multimodal message: build content blocks array
-            content_blocks = []
+            content_blocks: list[dict[str, Any]] = []
 
             # Add text block if there's text
             if message:
@@ -331,7 +309,7 @@ class SpecChatSession:
 
             # Send multimodal content to Claude using async generator format
             # The SDK's query() accepts AsyncIterable[dict] for custom message formats
-            await self.client.query(_make_multimodal_message(content_blocks))
+            await self.client.query(make_multimodal_message(content_blocks))
             logger.info(f"Sent multimodal message with {len(attachments)} image(s)")
         else:
             # Text-only message: use string format
@@ -340,7 +318,7 @@ class SpecChatSession:
         current_text = ""
 
         # Track pending writes for BOTH required files
-        pending_writes = {
+        pending_writes: dict[str, dict[str, Any] | None] = {
             "app_spec": None,      # {"tool_id": ..., "path": ...}
             "initializer": None,   # {"tool_id": ..., "path": ...}
         }
@@ -415,7 +393,8 @@ class SpecChatSession:
                             logger.warning(f"Tool error: {content}")
                             # Clear any pending writes that failed
                             for key in pending_writes:
-                                if pending_writes[key] and tool_use_id == pending_writes[key].get("tool_id"):
+                                pending_write = pending_writes[key]
+                                if pending_write is not None and tool_use_id == pending_write.get("tool_id"):
                                     logger.error(f"{key} write failed: {content}")
                                     pending_writes[key] = None
                         else:

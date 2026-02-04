@@ -7,6 +7,7 @@ Provides REST API, WebSocket, and static file serving.
 """
 
 import asyncio
+import logging
 import os
 import shutil
 import sys
@@ -43,6 +44,7 @@ from .routers import (
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
+from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import (
     cleanup_all_devservers,
     cleanup_orphaned_devserver_locks,
@@ -54,7 +56,6 @@ from .services.terminal_manager import cleanup_all_terminals
 from .websocket import project_websocket
 
 # Paths
-ROOT_DIR = Path(__file__).parent.parent
 UI_DIST_DIR = ROOT_DIR / "ui" / "dist"
 
 
@@ -89,9 +90,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Module logger
+logger = logging.getLogger(__name__)
+
 # Check if remote access is enabled via environment variable
 # Set by start_ui.py when --host is not 127.0.0.1
 ALLOW_REMOTE = os.environ.get("AUTOCODER_ALLOW_REMOTE", "").lower() in ("1", "true", "yes")
+
+if ALLOW_REMOTE:
+    logger.warning(
+        "ALLOW_REMOTE is enabled. Terminal WebSocket is exposed without sandboxing. "
+        "Only use this in trusted network environments."
+    )
 
 # CORS - allow all origins when remote access is enabled, otherwise localhost only
 if ALLOW_REMOTE:
@@ -224,7 +234,14 @@ if UI_DIST_DIR.exists():
             raise HTTPException(status_code=404)
 
         # Try to serve the file directly
-        file_path = UI_DIST_DIR / path
+        file_path = (UI_DIST_DIR / path).resolve()
+
+        # Ensure resolved path is within UI_DIST_DIR (prevent path traversal)
+        try:
+            file_path.relative_to(UI_DIST_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=404)
+
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
 

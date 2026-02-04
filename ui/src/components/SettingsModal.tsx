@@ -47,6 +47,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleBatchSizeChange = (size: number) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ batch_size: size })
+    }
+  }
+
   const models = modelsData?.models ?? []
   const isSaving = updateSettings.isPending
 
@@ -182,10 +188,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <div className="space-y-0.5">
                 <Label className="font-medium">Browser Testing</Label>
                 <p className="text-sm text-muted-foreground">
-                  {(settings.testing_mode || 'full') === 'smart' ? 'UI features only' : 'All features'}
+                  {(settings?.testing_mode || 'full') === 'smart' ? 'UI features only' : 'All features'}
                 </p>
               </div>
-              <div className={`flex rounded-lg border overflow-hidden ${settings.yolo_mode ? 'opacity-50' : ''}`}>
+              <div className={`flex rounded-lg border overflow-hidden ${settings?.yolo_mode ? 'opacity-50' : ''}`}>
                 {[
                   { id: 'full', label: 'Full' },
                   { id: 'smart', label: 'Smart' },
@@ -193,17 +199,35 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <button
                     key={mode.id}
                     onClick={() => handleTestingModeChange(mode.id)}
-                    disabled={isSaving || settings.yolo_mode}
+                    disabled={isSaving || settings?.yolo_mode}
                     className={`py-1.5 px-3 text-sm font-medium transition-colors ${
-                      (settings.testing_mode || 'full') === mode.id
+                      (settings?.testing_mode || 'full') === mode.id
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-background text-foreground hover:bg-muted'
-                    } ${(isSaving || settings.yolo_mode) ? 'cursor-not-allowed' : ''}`}
+                    } ${(isSaving || settings?.yolo_mode) ? 'cursor-not-allowed' : ''}`}
                   >
                     {mode.label}
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Headless Browser Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="playwright-headless" className="font-medium">
+                  Headless Browser
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Run browser without visible window (saves CPU)
+                </p>
+              </div>
+              <Switch
+                id="playwright-headless"
+                checked={settings?.playwright_headless ?? true}
+                onCheckedChange={() => updateSettings.mutate({ playwright_headless: !(settings?.playwright_headless ?? true) })}
+                disabled={isSaving}
+              />
             </div>
 
             {/* Model Selection */}
@@ -246,6 +270,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {ratio}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Features per Agent */}
+            <div className="space-y-2">
+              <Label className="font-medium">Features per Agent</Label>
+              <p className="text-sm text-muted-foreground">
+                Number of features assigned to each coding agent
+              </p>
+              <div className="flex rounded-lg border overflow-hidden">
+                {[1, 2, 3].map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => handleBatchSizeChange(size)}
+                    disabled={isSaving}
+                    className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                      (settings.batch_size ?? 1) === size
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-background text-foreground hover:bg-muted'
+                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {size}
                   </button>
                 ))}
               </div>

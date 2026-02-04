@@ -437,6 +437,8 @@ class SettingsResponse(BaseModel):
     ollama_mode: bool = False  # True if Ollama API is configured via .env
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
     testing_mode: str = DEFAULT_TESTING_MODE  # Testing mode: full, smart, minimal, off
+    playwright_headless: bool = True
+    batch_size: int = 3  # Features per coding agent batch (1-3)
 
 
 class ModelsResponse(BaseModel):
@@ -451,6 +453,8 @@ class SettingsUpdate(BaseModel):
     model: str | None = None
     testing_agent_ratio: int | None = None  # 0-3
     testing_mode: str | None = None  # full, smart, minimal, off
+    playwright_headless: bool | None = None
+    batch_size: int | None = None  # Features per agent batch (1-3)
 
     @field_validator('model')
     @classmethod
@@ -471,6 +475,13 @@ class SettingsUpdate(BaseModel):
     def validate_testing_ratio(cls, v: int | None) -> int | None:
         if v is not None and (v < 0 or v > 3):
             raise ValueError("testing_agent_ratio must be between 0 and 3")
+        return v
+
+    @field_validator('batch_size')
+    @classmethod
+    def validate_batch_size(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 3):
+            raise ValueError("batch_size must be between 1 and 3")
         return v
 
 

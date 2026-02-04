@@ -92,8 +92,9 @@ class SchedulerService:
     async def _load_project_schedules(self, project_name: str, project_dir: Path) -> int:
         """Load schedules for a single project. Returns count of schedules loaded."""
         from api.database import Schedule, create_database
+        from autocoder_paths import get_features_db_path
 
-        db_path = project_dir / "features.db"
+        db_path = get_features_db_path(project_dir)
         if not db_path.exists():
             return 0
 
@@ -567,8 +568,9 @@ class SchedulerService:
     ):
         """Check if a project should be started on server startup."""
         from api.database import Schedule, ScheduleOverride, create_database
+        from autocoder_paths import get_features_db_path
 
-        db_path = project_dir / "features.db"
+        db_path = get_features_db_path(project_dir)
         if not db_path.exists():
             return
 

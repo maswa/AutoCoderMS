@@ -10,11 +10,20 @@ import json
 import os
 import sqlite3
 import urllib.request
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
+
+# SQLite connection settings for parallel mode safety
+SQLITE_TIMEOUT = 30  # seconds to wait for locks
+
+
+def _get_connection(db_file: Path) -> sqlite3.Connection:
+    """Get a SQLite connection with proper timeout settings for parallel mode."""
+    return sqlite3.connect(db_file, timeout=SQLITE_TIMEOUT)
 
 
 def has_features(project_dir: Path) -> bool:
@@ -31,25 +40,23 @@ def has_features(project_dir: Path) -> bool:
 
     Returns False if no features exist (initializer needs to run).
     """
-    import sqlite3
-
     # Check legacy JSON file first
     json_file = project_dir / "feature_list.json"
     if json_file.exists():
         return True
 
     # Check SQLite database
-    db_file = project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return False
 
     try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM features")
-        count = cursor.fetchone()[0]
-        conn.close()
-        return count > 0
+        with closing(_get_connection(db_file)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM features")
+            count: int = cursor.fetchone()[0]
+            return bool(count > 0)
     except Exception:
         # Database exists but can't be read or has no features table
         return False
@@ -65,41 +72,41 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     Returns:
         (passing_count, in_progress_count, total_count)
     """
-    db_file = project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return 0, 0, 0
 
     try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        # Single aggregate query instead of 3 separate COUNT queries
-        # Handle case where in_progress column doesn't exist yet (legacy DBs)
-        try:
-            cursor.execute("""
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing,
-                    SUM(CASE WHEN in_progress = 1 THEN 1 ELSE 0 END) as in_progress
-                FROM features
-            """)
-            row = cursor.fetchone()
-            total = row[0] or 0
-            passing = row[1] or 0
-            in_progress = row[2] or 0
-        except sqlite3.OperationalError:
-            # Fallback for databases without in_progress column
-            cursor.execute("""
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing
-                FROM features
-            """)
-            row = cursor.fetchone()
-            total = row[0] or 0
-            passing = row[1] or 0
-            in_progress = 0
-        conn.close()
-        return passing, in_progress, total
+        with closing(_get_connection(db_file)) as conn:
+            cursor = conn.cursor()
+            # Single aggregate query instead of 3 separate COUNT queries
+            # Handle case where in_progress column doesn't exist yet (legacy DBs)
+            try:
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing,
+                        SUM(CASE WHEN in_progress = 1 THEN 1 ELSE 0 END) as in_progress
+                    FROM features
+                """)
+                row = cursor.fetchone()
+                total = row[0] or 0
+                passing = row[1] or 0
+                in_progress = row[2] or 0
+            except sqlite3.OperationalError:
+                # Fallback for databases without in_progress column
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing
+                    FROM features
+                """)
+                row = cursor.fetchone()
+                total = row[0] or 0
+                passing = row[1] or 0
+                in_progress = 0
+            return passing, in_progress, total
     except Exception as e:
         print(f"[Database error in count_passing_tests: {e}]")
         return 0, 0, 0
@@ -115,22 +122,22 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
     Returns:
         List of dicts with id, category, name for each passing feature
     """
-    db_file = project_dir / "features.db"
+    from autocoder_paths import get_features_db_path
+    db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return []
 
     try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, category, name FROM features WHERE passes = 1 ORDER BY priority ASC"
-        )
-        features = [
-            {"id": row[0], "category": row[1], "name": row[2]}
-            for row in cursor.fetchall()
-        ]
-        conn.close()
-        return features
+        with closing(_get_connection(db_file)) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, category, name FROM features WHERE passes = 1 ORDER BY priority ASC"
+            )
+            features = [
+                {"id": row[0], "category": row[1], "name": row[2]}
+                for row in cursor.fetchall()
+            ]
+            return features
     except Exception:
         return []
 
@@ -140,7 +147,8 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
     if not WEBHOOK_URL:
         return  # Webhook not configured
 
-    cache_file = project_dir / PROGRESS_CACHE_FILE
+    from autocoder_paths import get_progress_cache_path
+    cache_file = get_progress_cache_path(project_dir)
     previous = 0
     previous_passing_ids = set()
 

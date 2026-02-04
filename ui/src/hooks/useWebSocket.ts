@@ -227,6 +227,7 @@ export function useProjectWebSocket(projectName: string | null) {
                     agentName: message.agentName,
                     agentType: message.agentType || 'coding',  // Default to coding for backwards compat
                     featureId: message.featureId,
+                    featureIds: message.featureIds || [message.featureId],
                     featureName: message.featureName,
                     state: message.state,
                     thought: message.thought,
@@ -242,6 +243,7 @@ export function useProjectWebSocket(projectName: string | null) {
                       agentName: message.agentName,
                       agentType: message.agentType || 'coding',  // Default to coding for backwards compat
                       featureId: message.featureId,
+                      featureIds: message.featureIds || [message.featureId],
                       featureName: message.featureName,
                       state: message.state,
                       thought: message.thought,

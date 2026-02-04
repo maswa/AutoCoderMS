@@ -40,15 +40,36 @@ Pull request(s): $ARGUMENTS
    - For Medium PRs: spawn 1-2 agents focusing on the most impacted areas
    - For Complex PRs: spawn up to 3 agents to cover security, performance, and architectural concerns
 
-4. **Vision Alignment Check**
+4. **PR Scope & Title Alignment Check**
+   - Compare the PR title and description against the actual diff content
+   - Check whether the PR is focused on a single coherent change or contains multiple unrelated changes
+   - If the title/description describe one thing but the PR contains significantly more (e.g., title says "fix typo in README" but the diff touches 20 files across multiple domains), flag this as a **scope mismatch**
+   - A scope mismatch is a **merge blocker** — recommend the author split the PR into smaller, focused PRs
+   - Suggest specific ways to split the PR (e.g., "separate the refactor from the feature addition")
+   - Reviewing large, unfocused PRs is impractical and error-prone; the review cannot provide adequate assurance for such changes
+
+5. **Vision Alignment Check**
    - Read the project's README.md and CLAUDE.md to understand the application's core purpose
    - Assess whether this PR aligns with the application's intended functionality
    - If the changes deviate significantly from the core vision or add functionality that doesn't serve the application's purpose, note this in the review
    - This is not a blocker, but should be flagged for the reviewer's consideration
 
-5. **Safety Assessment**
+6. **Safety Assessment**
    - Provide a review on whether the PR is safe to merge as-is
    - Provide any feedback in terms of risk level
 
-6. **Improvements**
+7. **Improvements**
    - Propose any improvements in terms of importance and complexity
+
+8. **Merge Recommendation**
+   - Based on all findings, provide a clear merge/don't-merge recommendation
+   - If all concerns are minor (cosmetic issues, naming suggestions, small style nits, missing comments, etc.), recommend **merging the PR** and note that the reviewer can address these minor concerns themselves with a quick follow-up commit pushed directly to master
+   - If there are significant concerns (bugs, security issues, architectural problems, scope mismatch), recommend **not merging** and explain what needs to be resolved first
+
+9. **TLDR**
+   - End the review with a `## TLDR` section
+   - In 3-5 bullet points maximum, summarize:
+     - What this PR is actually about (one sentence)
+     - The key concerns, if any (or "no significant concerns")
+     - **Verdict: MERGE** / **MERGE (with minor follow-up)** / **DON'T MERGE** with a one-line reason
+   - This section should be scannable in under 10 seconds

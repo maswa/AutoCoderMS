@@ -227,10 +227,14 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
   }, [])
 
   // Create a map of featureId to agent info for quick lookup
+  // Maps ALL batch feature IDs to the same agent
   const agentByFeatureId = useMemo(() => {
     const map = new Map<number, NodeAgentInfo>()
     for (const agent of activeAgents) {
-      map.set(agent.featureId, { name: agent.agentName, state: agent.state })
+      const ids = agent.featureIds || [agent.featureId]
+      for (const fid of ids) {
+        map.set(fid, { name: agent.agentName, state: agent.state })
+      }
     }
     return map
   }, [activeAgents])

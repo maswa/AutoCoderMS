@@ -7,8 +7,6 @@ WebSocket and REST endpoints for interactive spec creation with Claude.
 
 import json
 import logging
-import re
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -22,29 +20,12 @@ from ..services.spec_chat_session import (
     list_sessions,
     remove_session,
 )
+from ..utils.project_helpers import get_project_path as _get_project_path
+from ..utils.validation import is_valid_project_name as validate_project_name
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/spec", tags=["spec-creation"])
-
-# Root directory
-ROOT_DIR = Path(__file__).parent.parent.parent
-
-
-def _get_project_path(project_name: str) -> Path:
-    """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from registry import get_project_path
-    return get_project_path(project_name)
-
-
-def validate_project_name(name: str) -> bool:
-    """Validate project name to prevent path traversal."""
-    return bool(re.match(r'^[a-zA-Z0-9_-]{1,50}$', name))
 
 
 # ============================================================================
@@ -124,7 +105,8 @@ async def get_spec_file_status(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    status_file = project_dir / "prompts" / ".spec_status.json"
+    from autocoder_paths import get_prompts_dir
+    status_file = get_prompts_dir(project_dir) / ".spec_status.json"
 
     if not status_file.exists():
         return SpecFileStatus(

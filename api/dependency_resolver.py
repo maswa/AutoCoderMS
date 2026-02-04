@@ -7,6 +7,7 @@ Includes cycle detection, validation, and helper functions for dependency manage
 """
 
 import heapq
+from collections import deque
 from typing import TypedDict
 
 # Security: Prevent DoS via excessive dependencies
@@ -301,19 +302,20 @@ def compute_scheduling_scores(features: list[dict]) -> dict[int, float]:
 
     # Calculate depths via BFS from roots
     # Use visited set to prevent infinite loops from circular dependencies
+    # Use deque for O(1) popleft instead of list.pop(0) which is O(n)
     depths: dict[int, int] = {}
     visited: set[int] = set()
     roots = [f["id"] for f in features if not parents[f["id"]]]
-    queue = [(root, 0) for root in roots]
-    while queue:
-        node_id, depth = queue.pop(0)
+    bfs_queue: deque[tuple[int, int]] = deque((root, 0) for root in roots)
+    while bfs_queue:
+        node_id, depth = bfs_queue.popleft()
         if node_id in visited:
             continue  # Skip already visited nodes (handles cycles)
         visited.add(node_id)
         depths[node_id] = depth
         for child_id in children[node_id]:
             if child_id not in visited:
-                queue.append((child_id, depth + 1))
+                bfs_queue.append((child_id, depth + 1))
 
     # Handle orphaned nodes (shouldn't happen but be safe)
     for f in features:

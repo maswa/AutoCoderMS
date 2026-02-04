@@ -97,6 +97,31 @@ BLOCKED_COMMANDS = {
     "ufw",
 }
 
+# Sensitive directories (relative to home) that should never be exposed.
+# Used by both the EXTRA_READ_PATHS validator (client.py) and the filesystem
+# browser API (server/routers/filesystem.py) to block credential/key directories.
+# This is the single source of truth -- import from here in both places.
+#
+# SENSITIVE_DIRECTORIES is the union of the previous filesystem browser blocklist
+# (filesystem.py) and the previous EXTRA_READ_PATHS blocklist (client.py).
+# Some entries are new to each consumer -- this is intentional for defense-in-depth.
+SENSITIVE_DIRECTORIES = {
+    ".ssh",
+    ".aws",
+    ".azure",
+    ".kube",
+    ".gnupg",
+    ".gpg",
+    ".password-store",
+    ".docker",
+    ".config/gcloud",
+    ".config/gh",
+    ".npmrc",
+    ".pypirc",
+    ".netrc",
+    ".terraform",
+}
+
 # Commands that trigger emphatic warnings but CAN be approved (Phase 3)
 # For now, these are blocked like BLOCKED_COMMANDS until Phase 3 implements approval
 DANGEROUS_COMMANDS = {
@@ -413,24 +438,6 @@ def validate_init_script(command_string: str) -> tuple[bool, str]:
     return False, f"Only ./init.sh is allowed, got: {script}"
 
 
-def get_command_for_validation(cmd: str, segments: list[str]) -> str:
-    """
-    Find the specific command segment that contains the given command.
-
-    Args:
-        cmd: The command name to find
-        segments: List of command segments
-
-    Returns:
-        The segment containing the command, or empty string if not found
-    """
-    for segment in segments:
-        segment_commands = extract_commands(segment)
-        if cmd in segment_commands:
-            return segment
-    return ""
-
-
 def matches_pattern(command: str, pattern: str) -> bool:
     """
     Check if a command matches a pattern.
@@ -470,6 +477,75 @@ def matches_pattern(command: str, pattern: str) -> bool:
         return command == pattern or command == pattern_name or command.endswith("/" + pattern_name)
 
     return False
+
+
+def _validate_command_list(commands: list, config_path: Path, field_name: str) -> bool:
+    """
+    Validate a list of command entries from a YAML config.
+
+    Each entry must be a dict with a non-empty string 'name' field.
+    Used by both load_org_config() and load_project_commands() to avoid
+    duplicating the same validation logic.
+
+    Args:
+        commands: List of command entries to validate
+        config_path: Path to the config file (for log messages)
+        field_name: Name of the YAML field being validated (e.g., 'allowed_commands', 'commands')
+
+    Returns:
+        True if all entries are valid, False otherwise
+    """
+    if not isinstance(commands, list):
+        logger.warning(f"Config at {config_path}: '{field_name}' must be a list")
+        return False
+    for i, cmd in enumerate(commands):
+        if not isinstance(cmd, dict):
+            logger.warning(f"Config at {config_path}: {field_name}[{i}] must be a dict")
+            return False
+        if "name" not in cmd:
+            logger.warning(f"Config at {config_path}: {field_name}[{i}] missing 'name'")
+            return False
+        if not isinstance(cmd["name"], str) or cmd["name"].strip() == "":
+            logger.warning(f"Config at {config_path}: {field_name}[{i}] has invalid 'name'")
+            return False
+    return True
+
+
+def _validate_pkill_processes(config: dict, config_path: Path) -> Optional[list[str]]:
+    """
+    Validate and normalize pkill_processes from a YAML config.
+
+    Each entry must be a non-empty string matching VALID_PROCESS_NAME_PATTERN
+    (alphanumeric, dots, underscores, hyphens only -- no regex metacharacters).
+    Used by both load_org_config() and load_project_commands().
+
+    Args:
+        config: Parsed YAML config dict that may contain 'pkill_processes'
+        config_path: Path to the config file (for log messages)
+
+    Returns:
+        Normalized list of process names, or None if validation fails.
+        Returns an empty list if 'pkill_processes' is not present.
+    """
+    if "pkill_processes" not in config:
+        return []
+
+    processes = config["pkill_processes"]
+    if not isinstance(processes, list):
+        logger.warning(f"Config at {config_path}: 'pkill_processes' must be a list")
+        return None
+
+    normalized = []
+    for i, proc in enumerate(processes):
+        if not isinstance(proc, str):
+            logger.warning(f"Config at {config_path}: pkill_processes[{i}] must be a string")
+            return None
+        proc = proc.strip()
+        if not proc or not VALID_PROCESS_NAME_PATTERN.fullmatch(proc):
+            logger.warning(f"Config at {config_path}: pkill_processes[{i}] has invalid value '{proc}'")
+            return None
+        normalized.append(proc)
+    return normalized
 
 
 def get_org_config_path() -> Path:
@@ -513,21 +589,8 @@ def load_org_config() -> Optional[dict]:
 
         # Validate allowed_commands if present
         if "allowed_commands" in config:
-            allowed = config["allowed_commands"]
-            if not isinstance(allowed, list):
-                logger.warning(f"Org config at {config_path}: 'allowed_commands' must be a list")
+            if not _validate_command_list(config["allowed_commands"], config_path, "allowed_commands"):
                 return None
-            for i, cmd in enumerate(allowed):
-                if not isinstance(cmd, dict):
-                    logger.warning(f"Org config at {config_path}: allowed_commands[{i}] must be a dict")
-                    return None
-                if "name" not in cmd:
-                    logger.warning(f"Org config at {config_path}: allowed_commands[{i}] missing 'name'")
-                    return None
-                # Validate that name is a non-empty string
-                if not isinstance(cmd["name"], str) or cmd["name"].strip() == "":
-                    logger.warning(f"Org config at {config_path}: allowed_commands[{i}] has invalid 'name'")
-                    return None
 
         # Validate blocked_commands if present
         if "blocked_commands" in config:
@@ -541,23 +604,10 @@ def load_org_config() -> Optional[dict]:
                     return None
 
         # Validate pkill_processes if present
-        if "pkill_processes" in config:
-            processes = config["pkill_processes"]
-            if not isinstance(processes, list):
-                logger.warning(f"Org config at {config_path}: 'pkill_processes' must be a list")
-                return None
-            # Normalize and validate each process name against safe pattern
-            normalized = []
-            for i, proc in enumerate(processes):
-                if not isinstance(proc, str):
-                    logger.warning(f"Org config at {config_path}: pkill_processes[{i}] must be a string")
-                    return None
-                proc = proc.strip()
-                # Block empty strings and regex metacharacters
-                if not proc or not VALID_PROCESS_NAME_PATTERN.fullmatch(proc):
-                    logger.warning(f"Org config at {config_path}: pkill_processes[{i}] has invalid value '{proc}'")
-                    return None
-                normalized.append(proc)
+        normalized = _validate_pkill_processes(config, config_path)
+        if normalized is None:
+            return None
+        if normalized:
             config["pkill_processes"] = normalized
 
         return config
@@ -603,46 +653,21 @@ def load_project_commands(project_dir: Path) -> Optional[dict]:
             return None
 
         commands = config.get("commands", [])
-        if not isinstance(commands, list):
-            logger.warning(f"Project config at {config_path}: 'commands' must be a list")
-            return None
 
         # Enforce 100 command limit
-        if len(commands) > 100:
+        if isinstance(commands, list) and len(commands) > 100:
             logger.warning(f"Project config at {config_path} exceeds 100 command limit ({len(commands)} commands)")
             return None
 
-        # Validate each command entry
-        for i, cmd in enumerate(commands):
-            if not isinstance(cmd, dict):
-                logger.warning(f"Project config at {config_path}: commands[{i}] must be a dict")
-                return None
-            if "name" not in cmd:
-                logger.warning(f"Project config at {config_path}: commands[{i}] missing 'name'")
-                return None
-            # Validate name is a non-empty string
-            if not isinstance(cmd["name"], str) or cmd["name"].strip() == "":
-                logger.warning(f"Project config at {config_path}: commands[{i}] has invalid 'name'")
-                return None
+        # Validate each command entry using shared helper
+        if not _validate_command_list(commands, config_path, "commands"):
+            return None
 
         # Validate pkill_processes if present
-        if "pkill_processes" in config:
-            processes = config["pkill_processes"]
-            if not isinstance(processes, list):
-                logger.warning(f"Project config at {config_path}: 'pkill_processes' must be a list")
-                return None
-            # Normalize and validate each process name against safe pattern
-            normalized = []
-            for i, proc in enumerate(processes):
-                if not isinstance(proc, str):
-                    logger.warning(f"Project config at {config_path}: pkill_processes[{i}] must be a string")
-                    return None
-                proc = proc.strip()
-                # Block empty strings and regex metacharacters
-                if not proc or not VALID_PROCESS_NAME_PATTERN.fullmatch(proc):
-                    logger.warning(f"Project config at {config_path}: pkill_processes[{i}] has invalid value '{proc}'")
-                    return None
-                normalized.append(proc)
+        normalized = _validate_pkill_processes(config, config_path)
+        if normalized is None:
+            return None
+        if normalized:
             config["pkill_processes"] = normalized
 
         return config
@@ -659,8 +684,12 @@ def validate_project_command(cmd_config: dict) -> tuple[bool, str]:
     """
     Validate a single command entry from project config.
 
+    Checks that the command has a valid name and is not in any blocklist.
+    Called during hierarchy resolution to gate each project command before
+    it is added to the effective allowed set.
+
     Args:
-        cmd_config: Dict with command configuration (name, description, args)
+        cmd_config: Dict with command configuration (name, description)
 
     Returns:
         Tuple of (is_valid, error_message)
@@ -689,15 +718,6 @@ def validate_project_command(cmd_config: dict) -> tuple[bool, str]:
     # Description is optional
     if "description" in cmd_config and not isinstance(cmd_config["description"], str):
         return False, "Description must be a string"
-
-    # Args validation (Phase 1 - just check structure)
-    if "args" in cmd_config:
-        args = cmd_config["args"]
-        if not isinstance(args, list):
-            return False, "Args must be a list"
-        for arg in args:
-            if not isinstance(arg, str):
-                return False, "Each arg must be a string"
 
     return True, ""
 
@@ -899,8 +919,13 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
 
         # Additional validation for sensitive commands
         if cmd in COMMANDS_NEEDING_EXTRA_VALIDATION:
-            # Find the specific segment containing this command
-            cmd_segment = get_command_for_validation(cmd, segments)
+            # Find the specific segment containing this command by searching
+            # each segment's extracted commands for a match
+            cmd_segment = ""
+            for segment in segments:
+                if cmd in extract_commands(segment):
+                    cmd_segment = segment
+                    break
             if not cmd_segment:
                 cmd_segment = command  # Fallback to full command
 

@@ -24,6 +24,7 @@ from typing import Awaitable, Callable, Literal, Set
 import psutil
 
 from registry import list_registered_projects
+from security import extract_commands, get_effective_commands, is_command_allowed
 from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,8 @@ class DevServerProcessManager:
         self._callbacks_lock = threading.Lock()
 
         # Lock file to prevent multiple instances (stored in project directory)
-        self.lock_file = self.project_dir / ".devserver.lock"
+        from autocoder_paths import get_devserver_lock_path
+        self.lock_file = get_devserver_lock_path(self.project_dir)
 
     @property
     def status(self) -> Literal["stopped", "running", "crashed"]:
@@ -304,6 +306,20 @@ class DevServerProcessManager:
         if not self.project_dir.exists():
             return False, f"Project directory does not exist: {self.project_dir}"
 
+        # Defense-in-depth: validate command against security allowlist
+        commands = extract_commands(command)
+        if not commands:
+            return False, "Could not parse command for security validation"
+
+        allowed_commands, blocked_commands = get_effective_commands(self.project_dir)
+        for cmd in commands:
+            if cmd in blocked_commands:
+                logger.warning("Blocked dev server command '%s' (in blocklist) for %s", cmd, self.project_name)
+                return False, f"Command '{cmd}' is blocked and cannot be used as a dev server command"
+            if not is_command_allowed(cmd, allowed_commands):
+                logger.warning("Rejected dev server command '%s' (not in allowlist) for %s", cmd, self.project_name)
+                return False, f"Command '{cmd}' is not in the allowed commands list"
+
         self._command = command
         self._detected_url = None  # Reset URL detection
 
@@ -487,8 +503,18 @@ def cleanup_orphaned_devserver_locks() -> int:
             if not project_path.exists():
                 continue
 
-            lock_file = project_path / ".devserver.lock"
-            if not lock_file.exists():
+            # Check both legacy and new locations for lock files
+            from autocoder_paths import get_autocoder_dir
+            lock_locations = [
+                project_path / ".devserver.lock",
+                get_autocoder_dir(project_path) / ".devserver.lock",
+            ]
+            lock_file = None
+            for candidate in lock_locations:
+                if candidate.exists():
+                    lock_file = candidate
+                    break
+            if lock_file is None:
                 continue
 
             try:

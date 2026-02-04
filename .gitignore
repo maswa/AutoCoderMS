@@ -76,6 +76,8 @@ ui/playwright-report/
 .dmypy.json
 dmypy.json
 
+.ruff_cache/
+
 # ===================
 # Claude Code
 # ===================

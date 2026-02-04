@@ -199,7 +199,8 @@ export interface ActiveAgent {
   agentIndex: number  // -1 for synthetic completions
   agentName: AgentMascot | 'Unknown'
   agentType: AgentType  // "coding" or "testing"
-  featureId: number
+  featureId: number        // Current/primary feature (backward compat)
+  featureIds: number[]     // All features in batch
   featureName: string
   state: AgentState
   thought?: string
@@ -270,6 +271,7 @@ export interface WSAgentUpdateMessage {
   agentName: AgentMascot | 'Unknown'
   agentType: AgentType  // "coding" or "testing"
   featureId: number
+  featureIds?: number[]  // All features in batch (may be absent for backward compat)
   featureName: string
   state: AgentState
   thought?: string
@@ -544,6 +546,8 @@ export interface Settings {
   ollama_mode: boolean
   testing_agent_ratio: number  // Regression testing agents (0-3)
   testing_mode: string  // "full", "smart", "minimal", "off"
+  playwright_headless: boolean
+  batch_size: number  // Features per coding agent batch (1-3)
 }
 
 export interface SettingsUpdate {
@@ -551,6 +555,8 @@ export interface SettingsUpdate {
   model?: string
   testing_agent_ratio?: number
   testing_mode?: string
+  playwright_headless?: boolean
+  batch_size?: number
 }
 
 export interface ProjectSettingsUpdate {
