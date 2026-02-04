@@ -840,17 +840,6 @@ class ResearchTracker:
             self.files_written = []
 
 
-def _get_project_path(project_name: str) -> Path:
-    """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from registry import get_project_path
-    return get_project_path(project_name)
-
-
 def _get_count_passing_tests():
     """Lazy import of count_passing_tests."""
     global _count_passing_tests

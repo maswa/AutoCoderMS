@@ -1040,7 +1040,7 @@ class ParallelOrchestrator:
             self.running_testing_agents[proc.pid] = (primary_feature_id, proc)
             testing_count = len(self.running_testing_agents)
             # Initialize activity timestamp for stuck detection (negative to distinguish from coding)
-            self._last_activity[-feature_id] = time.time()
+            self._last_activity[-primary_feature_id] = time.time()
 
         # Start output reader thread with primary feature ID for log attribution
         threading.Thread(

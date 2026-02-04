@@ -382,7 +382,7 @@ export function BranchSelectionModal({
                 <ScrollArea className="h-48 border rounded-md">
                   <RadioGroup
                     value={selectedBranch || ''}
-                    onValueChange={(value) =>
+                    onValueChange={(value: string) =>
                       handleSelectBranch(branchData.branches.find((b) => b.name === value)!)
                     }
                     className="p-2 space-y-1"
