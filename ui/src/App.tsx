@@ -37,8 +37,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
-const STORAGE_KEY = 'autocoder-selected-project'
-const VIEW_MODE_KEY = 'autocoder-view-mode'
+const STORAGE_KEY = 'autoforge-selected-project'
+const VIEW_MODE_KEY = 'autoforge-view-mode'
 
 // Bottom padding for main content when debug panel is collapsed (40px header + 8px margin)
 const COLLAPSED_DEBUG_PANEL_CLEARANCE = 48
@@ -259,8 +259,8 @@ function App() {
         setShowAddFeature(true)
       }
 
-      // E : Expand project with AI (when project selected and has features)
-      if ((e.key === 'e' || e.key === 'E') && selectedProject && features &&
+      // E : Expand project with AI (when project selected, has spec and has features)
+      if ((e.key === 'e' || e.key === 'E') && selectedProject && hasSpec && features &&
           (features.pending.length + features.in_progress.length + features.done.length) > 0) {
         e.preventDefault()
         setShowExpandProject(true)
@@ -320,7 +320,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, debugActiveTab, assistantOpen, features, showSettings, showKeyboardHelp, isSpecCreating, viewMode, showResetModal, wsState.agentStatus])
+  }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, debugActiveTab, assistantOpen, features, showSettings, showKeyboardHelp, isSpecCreating, viewMode, showResetModal, wsState.agentStatus, hasSpec])
 
   // Combine WebSocket progress with feature data
   const progress = wsState.progress.total > 0 ? wsState.progress : {
@@ -351,9 +351,12 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Title */}
-            <h1 className="font-display text-2xl font-bold tracking-tight uppercase">
-              AutoCoder
-            </h1>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="AutoForge" className="h-9 w-9 rounded-full" />
+              <h1 className="font-display text-2xl font-bold tracking-tight uppercase">
+                AutoForge
+              </h1>
+            </div>
 
             {/* Controls */}
             <div className="flex items-center gap-4">
@@ -416,7 +419,7 @@ function App() {
                   {settings?.ollama_mode && (
                     <div
                       className="flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
-                      title="Using Ollama local models (configured via .env)"
+                      title="Using Ollama local models"
                     >
                       <img src="/ollama.png" alt="Ollama" className="w-5 h-5" />
                       <span className="text-xs font-bold text-foreground">Ollama</span>
@@ -427,7 +430,7 @@ function App() {
                   {settings?.glm_mode && (
                     <Badge
                       className="bg-purple-500 text-white hover:bg-purple-600"
-                      title="Using GLM API (configured via .env)"
+                      title="Using GLM API"
                     >
                       GLM
                     </Badge>
@@ -437,7 +440,7 @@ function App() {
 
               {/* Docs link */}
               <Button
-                onClick={() => { window.location.hash = '#/docs' }}
+                onClick={() => window.open('https://autoforge.cc', '_blank')}
                 variant="outline"
                 size="sm"
                 title="Documentation"
@@ -476,7 +479,7 @@ function App() {
         {!selectedProject ? (
           <div className="text-center mt-12">
             <h2 className="font-display text-2xl font-bold mb-2">
-              Welcome to AutoCoder
+              Welcome to AutoForge
             </h2>
             <p className="text-muted-foreground mb-4">
               Select a project from the dropdown above or create a new one to get started.
@@ -587,7 +590,7 @@ function App() {
       )}
 
       {/* Expand Project Modal - AI-powered bulk feature creation */}
-      {showExpandProject && selectedProject && (
+      {showExpandProject && selectedProject && hasSpec && (
         <ExpandProjectModal
           isOpen={showExpandProject}
           projectName={selectedProject}

@@ -19,7 +19,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
-from .chat_constants import API_ENV_VARS, ROOT_DIR, make_multimodal_message
+from .chat_constants import ROOT_DIR, make_multimodal_message
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -100,7 +100,7 @@ class SpecChatSession:
         # Delete app_spec.txt so Claude can create it fresh
         # The SDK requires reading existing files before writing, but app_spec.txt is created new
         # Note: We keep initializer_prompt.md so Claude can read and update the template
-        from autocoder_paths import get_prompts_dir
+        from autoforge_paths import get_prompts_dir
         prompts_dir = get_prompts_dir(self.project_dir)
         app_spec_path = prompts_dir / "app_spec.txt"
         if app_spec_path.exists():
@@ -121,7 +121,7 @@ class SpecChatSession:
                 ],
             },
         }
-        from autocoder_paths import get_claude_settings_path
+        from autoforge_paths import get_claude_settings_path
         settings_file = get_claude_settings_path(self.project_dir)
         settings_file.parent.mkdir(parents=True, exist_ok=True)
         with open(settings_file, "w") as f:
@@ -154,16 +154,11 @@ class SpecChatSession:
         system_cli = shutil.which("claude")
 
         # Build environment overrides for API configuration
-        # Filter to only include vars that are actually set (non-None)
-        sdk_env: dict[str, str] = {}
-        for var in API_ENV_VARS:
-            value = os.getenv(var)
-            if value:
-                sdk_env[var] = value
+        from registry import DEFAULT_MODEL, get_effective_sdk_env
+        sdk_env = get_effective_sdk_env()
 
-        # Determine model from environment or use default
-        # This allows using alternative APIs (e.g., GLM via z.ai) that may not support Claude model names
-        model = os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-5-20251101")
+        # Determine model from SDK env (provider-aware) or fallback to env/default
+        model = sdk_env.get("ANTHROPIC_DEFAULT_OPUS_MODEL") or os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", DEFAULT_MODEL)
 
         try:
             self.client = ClaudeSDKClient(

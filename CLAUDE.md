@@ -18,18 +18,28 @@ This is an autonomous coding agent system with a React-based UI. It uses the Cla
 
 ## Commands
 
-### Quick Start (Recommended)
+### npm Global Install (Recommended)
 
 ```bash
-# Windows - launches CLI menu
-start.bat
+npm install -g autoforge-ai
+autoforge                    # Start server (first run sets up Python venv)
+autoforge config             # Edit ~/.autoforge/.env in $EDITOR
+autoforge config --show      # Print active configuration
+autoforge --port 9999        # Custom port
+autoforge --no-browser       # Don't auto-open browser
+autoforge --repair           # Delete and recreate ~/.autoforge/venv/
+```
 
-# macOS/Linux
-./start.sh
+### From Source (Development)
 
+```bash
 # Launch Web UI (serves pre-built React app)
 start_ui.bat      # Windows
 ./start_ui.sh     # macOS/Linux
+
+# CLI menu
+start.bat         # Windows
+./start.sh        # macOS/Linux
 ```
 
 ### Python Backend (Manual)
@@ -162,11 +172,22 @@ Configuration in `pyproject.toml`:
 
 ## Architecture
 
+### npm CLI (bin/, lib/)
+
+The `autoforge` command is a Node.js wrapper that manages the Python environment and server lifecycle:
+- `bin/autoforge.js` - Entry point (shebang script)
+- `lib/cli.js` - Main CLI logic: Python 3.11+ detection (cross-platform), venv management at `~/.autoforge/venv/` with composite marker (requirements hash + Python version), `.env` config loading from `~/.autoforge/.env`, uvicorn server startup with PID file, and signal handling
+- `package.json` - npm package config (`autoforge-ai` on npm), `files` whitelist with `__pycache__` exclusions, `prepublishOnly` builds the UI
+- `requirements-prod.txt` - Runtime-only Python deps (excludes ruff, mypy, pytest)
+- `.npmignore` - Excludes dev files, tests, UI source from the published tarball
+
+Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publishes ~600KB tarball with 84 files)
+
 ### Core Python Modules
 
 - `start.py` - CLI launcher with project creation/selection menu
 - `autonomous_agent_demo.py` - Entry point for running the agent (supports `--yolo`, `--parallel`, `--batch-size`, `--batch-features`)
-- `autocoder_paths.py` - Central path resolution with dual-path backward compatibility and migration
+- `autoforge_paths.py` - Central path resolution with dual-path backward compatibility and migration
 - `agent.py` - Agent session loop using Claude Agent SDK
 - `client.py` - ClaudeSDKClient configuration with security hooks, MCP servers, and Vertex AI support
 - `security.py` - Bash command allowlist validation (ALLOWED_COMMANDS whitelist)
@@ -184,7 +205,7 @@ Configuration in `pyproject.toml`:
 ### Project Registry
 
 Projects can be stored in any directory. The registry maps project names to paths using SQLite:
-- **All platforms**: `~/.autocoder/registry.db`
+- **All platforms**: `~/.autoforge/registry.db`
 
 The registry uses:
 - SQLite database with SQLAlchemy ORM
@@ -271,6 +292,11 @@ Key components:
 - `ScheduleModal.tsx` - Schedule management UI
 - `SettingsModal.tsx` - Global settings panel
 
+In-app documentation (`/#/docs` route):
+- `src/components/docs/sections/` - Content for each doc section (GettingStarted.tsx, AgentSystem.tsx, etc.)
+- `src/components/docs/docsData.ts` - Sidebar structure, subsection IDs, search keywords
+- `src/components/docs/DocsPage.tsx` - Page layout; `DocsContent.tsx` - section renderer with scroll tracking
+
 Keyboard shortcuts (press `?` for help):
 - `D` - Toggle debug panel
 - `G` - Toggle Kanban/Graph view
@@ -280,18 +306,18 @@ Keyboard shortcuts (press `?` for help):
 
 ### Project Structure for Generated Apps
 
-Projects can be stored in any directory (registered in `~/.autocoder/registry.db`). Each project contains:
-- `.autocoder/prompts/app_spec.txt` - Application specification (XML format)
-- `.autocoder/prompts/initializer_prompt.md` - First session prompt
-- `.autocoder/prompts/coding_prompt.md` - Continuation session prompt
-- `.autocoder/features.db` - SQLite database with feature test cases
-- `.autocoder/.agent.lock` - Lock file to prevent multiple agent instances
-- `.autocoder/allowed_commands.yaml` - Project-specific bash command allowlist (optional)
-- `.autocoder/.gitignore` - Ignores runtime files
+Projects can be stored in any directory (registered in `~/.autoforge/registry.db`). Each project contains:
+- `.autoforge/prompts/app_spec.txt` - Application specification (XML format)
+- `.autoforge/prompts/initializer_prompt.md` - First session prompt
+- `.autoforge/prompts/coding_prompt.md` - Continuation session prompt
+- `.autoforge/features.db` - SQLite database with feature test cases
+- `.autoforge/.agent.lock` - Lock file to prevent multiple agent instances
+- `.autoforge/allowed_commands.yaml` - Project-specific bash command allowlist (optional)
+- `.autoforge/.gitignore` - Ignores runtime files
 - `CLAUDE.md` - Stays at project root (SDK convention)
 - `app_spec.txt` - Root copy for agent template compatibility
 
-Legacy projects with files at root level (e.g., `features.db`, `prompts/`) are auto-migrated to `.autocoder/` on next agent start. Dual-path resolution ensures old and new layouts work transparently.
+Legacy projects with files at root level (e.g., `features.db`, `prompts/`) are auto-migrated to `.autoforge/` on next agent start. Dual-path resolution ensures old and new layouts work transparently.
 
 ### Security Model
 
@@ -337,14 +363,14 @@ The agent's bash command access is controlled through a hierarchical configurati
 
 **Command Hierarchy (highest to lowest priority):**
 1. **Hardcoded Blocklist** (`security.py`) - NEVER allowed (dd, sudo, shutdown, etc.)
-2. **Org Blocklist** (`~/.autocoder/config.yaml`) - Cannot be overridden by projects
-3. **Org Allowlist** (`~/.autocoder/config.yaml`) - Available to all projects
+2. **Org Blocklist** (`~/.autoforge/config.yaml`) - Cannot be overridden by projects
+3. **Org Allowlist** (`~/.autoforge/config.yaml`) - Available to all projects
 4. **Global Allowlist** (`security.py`) - Default commands (npm, git, curl, etc.)
-5. **Project Allowlist** (`.autocoder/allowed_commands.yaml`) - Project-specific commands
+5. **Project Allowlist** (`.autoforge/allowed_commands.yaml`) - Project-specific commands
 
 **Project Configuration:**
 
-Each project can define custom allowed commands in `.autocoder/allowed_commands.yaml`:
+Each project can define custom allowed commands in `.autoforge/allowed_commands.yaml`:
 
 ```yaml
 version: 1
@@ -364,7 +390,7 @@ commands:
 
 **Organization Configuration:**
 
-System administrators can set org-wide policies in `~/.autocoder/config.yaml`:
+System administrators can set org-wide policies in `~/.autoforge/config.yaml`:
 
 ```yaml
 version: 1
@@ -408,44 +434,23 @@ Run coding agents via Google Cloud Vertex AI:
    CLAUDE_CODE_USE_VERTEX=1
    CLOUD_ML_REGION=us-east5
    ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project-id
-   ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-5@20251101
+   ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-6
    ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-5@20250929
    ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-3-5-haiku@20241022
    ```
 
 **Note:** Use `@` instead of `-` in model names for Vertex AI.
 
-### Ollama Local Models (Optional)
+### Alternative API Providers (GLM, Ollama, Kimi, Custom)
 
-Run coding agents using local models via Ollama v0.14.0+:
+Alternative providers are configured via the **Settings UI** (gear icon > API Provider section). Select a provider, set the base URL, auth token, and model — no `.env` changes needed.
 
-1. Install Ollama: https://ollama.com
-2. Start Ollama: `ollama serve`
-3. Pull a coding model: `ollama pull qwen3-coder`
-4. Configure `.env`:
-   ```
-   ANTHROPIC_BASE_URL=http://localhost:11434
-   ANTHROPIC_AUTH_TOKEN=ollama
-   API_TIMEOUT_MS=3000000
-   ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder
-   ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3-coder
-   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder
-   ```
-5. Run autocoder normally - it will use your local Ollama models
+**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), Custom
 
-**Recommended coding models:**
-- `qwen3-coder` - Good balance of speed and capability
-- `deepseek-coder-v2` - Strong coding performance
-- `codellama` - Meta's code-focused model
-
-**Model tier mapping:**
-- Use the same model for all tiers, or map different models per capability level
-- Larger models (70B+) work best for Opus tier
-- Smaller models (7B-20B) work well for Haiku tier
-
-**Known limitations:**
-- Smaller context windows than Claude (model-dependent)
-- Extended context beta disabled (not supported by Ollama)
+**Ollama notes:**
+- Requires Ollama v0.14.0+ with Anthropic API compatibility
+- Install: https://ollama.com → `ollama serve` → `ollama pull qwen3-coder`
+- Recommended models: `qwen3-coder`, `deepseek-coder-v2`, `codellama`
 - Performance depends on local hardware (GPU recommended)
 
 ## Claude Code Integration
@@ -453,7 +458,7 @@ Run coding agents using local models via Ollama v0.14.0+:
 **Slash commands** (`.claude/commands/`):
 - `/create-spec` - Interactive spec creation for new projects
 - `/expand-project` - Expand existing project with new features
-- `/gsd-to-autocoder-spec` - Convert GSD codebase mapping to app_spec.txt
+- `/gsd-to-autoforge-spec` - Convert GSD codebase mapping to app_spec.txt
 - `/check-code` - Run lint and type-check for code quality
 - `/checkpoint` - Create comprehensive checkpoint commit
 - `/review-pr` - Review pull requests
@@ -465,7 +470,7 @@ Run coding agents using local models via Ollama v0.14.0+:
 
 **Skills** (`.claude/skills/`):
 - `frontend-design` - Distinctive, production-grade UI design
-- `gsd-to-autocoder-spec` - Convert GSD codebase mapping to Autocoder app_spec format
+- `gsd-to-autoforge-spec` - Convert GSD codebase mapping to AutoForge app_spec format
 
 **Other:**
 - `.claude/templates/` - Prompt templates copied to new projects
@@ -475,12 +480,12 @@ Run coding agents using local models via Ollama v0.14.0+:
 
 ### Prompt Loading Fallback Chain
 
-1. Project-specific: `{project_dir}/.autocoder/prompts/{name}.md` (or legacy `{project_dir}/prompts/{name}.md`)
+1. Project-specific: `{project_dir}/.autoforge/prompts/{name}.md` (or legacy `{project_dir}/prompts/{name}.md`)
 2. Base template: `.claude/templates/{name}.template.md`
 
 ### Agent Session Flow
 
-1. Check if `.autocoder/features.db` has features (determines initializer vs coding agent)
+1. Check if `.autoforge/features.db` has features (determines initializer vs coding agent)
 2. Create ClaudeSDKClient with security settings
 3. Send prompt and stream response
 4. Auto-continue with 3-second delay between sessions

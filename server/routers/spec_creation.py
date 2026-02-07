@@ -21,7 +21,7 @@ from ..services.spec_chat_session import (
     remove_session,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
-from ..utils.validation import is_valid_project_name as validate_project_name
+from ..utils.validation import is_valid_project_name, validate_project_name
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ async def list_spec_sessions():
 @router.get("/sessions/{project_name}", response_model=SpecSessionStatus)
 async def get_session_status(project_name: str):
     """Get status of a spec creation session."""
-    if not validate_project_name(project_name):
+    if not is_valid_project_name(project_name):
         raise HTTPException(status_code=400, detail="Invalid project name")
 
     session = get_session(project_name)
@@ -67,7 +67,7 @@ async def get_session_status(project_name: str):
 @router.delete("/sessions/{project_name}")
 async def cancel_session(project_name: str):
     """Cancel and remove a spec creation session."""
-    if not validate_project_name(project_name):
+    if not is_valid_project_name(project_name):
         raise HTTPException(status_code=400, detail="Invalid project name")
 
     session = get_session(project_name)
@@ -95,7 +95,7 @@ async def get_spec_file_status(project_name: str):
     This is used for polling to detect when Claude has finished writing spec files.
     Claude writes this status file as the final step after completing all spec work.
     """
-    if not validate_project_name(project_name):
+    if not is_valid_project_name(project_name):
         raise HTTPException(status_code=400, detail="Invalid project name")
 
     project_dir = _get_project_path(project_name)
@@ -105,7 +105,7 @@ async def get_spec_file_status(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_prompts_dir
+    from autoforge_paths import get_prompts_dir
     status_file = get_prompts_dir(project_dir) / ".spec_status.json"
 
     if not status_file.exists():
@@ -166,21 +166,27 @@ async def spec_chat_websocket(websocket: WebSocket, project_name: str):
     - {"type": "error", "content": "..."} - Error message
     - {"type": "pong"} - Keep-alive pong
     """
-    if not validate_project_name(project_name):
+    # Always accept WebSocket first to avoid opaque 403 errors
+    await websocket.accept()
+
+    try:
+        project_name = validate_project_name(project_name)
+    except HTTPException:
+        await websocket.send_json({"type": "error", "content": "Invalid project name"})
         await websocket.close(code=4000, reason="Invalid project name")
         return
 
     # Look up project directory from registry
     project_dir = _get_project_path(project_name)
     if not project_dir:
+        await websocket.send_json({"type": "error", "content": "Project not found in registry"})
         await websocket.close(code=4004, reason="Project not found in registry")
         return
 
     if not project_dir.exists():
+        await websocket.send_json({"type": "error", "content": "Project directory not found"})
         await websocket.close(code=4004, reason="Project directory not found")
         return
-
-    await websocket.accept()
 
     session: Optional[SpecChatSession] = None
 

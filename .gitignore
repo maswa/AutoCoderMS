@@ -2,6 +2,7 @@
 generations/
 automaker/
 temp/
+temp-docs/
 
 nul
 issues/
@@ -138,6 +139,7 @@ Desktop.ini
 ui/dist/
 ui/.vite/
 .vite/
+*.tgz
 
 # ===================
 # Environment files

@@ -26,11 +26,25 @@ export default defineConfig({
           'vendor-flow': ['@xyflow/react', 'dagre'],
           // Terminal emulator
           'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
-          // UI components
-          'vendor-ui': [
+          // UI components - Radix UI
+          'vendor-radix': [
+            '@radix-ui/react-checkbox',
             '@radix-ui/react-dialog',
             '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-label',
+            '@radix-ui/react-separator',
+            '@radix-ui/react-slot',
+            '@radix-ui/react-switch',
+          ],
+          // Markdown rendering
+          'vendor-markdown': ['react-markdown', 'remark-gfm'],
+          // Icons and utilities
+          'vendor-utils': [
             'lucide-react',
+            'canvas-confetti',
+            'class-variance-authority',
+            'clsx',
+            'tailwind-merge',
           ],
         },
       },

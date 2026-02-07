@@ -553,14 +553,23 @@ def get_org_config_path() -> Path:
     Get the organization-level config file path.
 
     Returns:
-        Path to ~/.autocoder/config.yaml
+        Path to ~/.autoforge/config.yaml (falls back to ~/.autocoder/config.yaml)
     """
-    return Path.home() / ".autocoder" / "config.yaml"
+    new_path = Path.home() / ".autoforge" / "config.yaml"
+    if new_path.exists():
+        return new_path
+    # Backward compatibility: check old location
+    old_path = Path.home() / ".autocoder" / "config.yaml"
+    if old_path.exists():
+        return old_path
+    return new_path
 
 
 def load_org_config() -> Optional[dict]:
     """
-    Load organization-level config from ~/.autocoder/config.yaml.
+    Load organization-level config from ~/.autoforge/config.yaml.
+
+    Falls back to ~/.autocoder/config.yaml for backward compatibility.
 
     Returns:
         Dict with parsed org config, or None if file doesn't exist or is invalid
@@ -630,7 +639,10 @@ def load_project_commands(project_dir: Path) -> Optional[dict]:
     Returns:
         Dict with parsed YAML config, or None if file doesn't exist or is invalid
     """
-    config_path = project_dir.resolve() / ".autocoder" / "allowed_commands.yaml"
+    # Check new location first, fall back to old for backward compatibility
+    config_path = project_dir.resolve() / ".autoforge" / "allowed_commands.yaml"
+    if not config_path.exists():
+        config_path = project_dir.resolve() / ".autocoder" / "allowed_commands.yaml"
 
     if not config_path.exists():
         return None
@@ -909,7 +921,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
             # Provide helpful error message with config hint
             error_msg = f"Command '{cmd}' is not allowed.\n"
             error_msg += "To allow this command:\n"
-            error_msg += "  1. Add to .autocoder/allowed_commands.yaml for this project, OR\n"
+            error_msg += "  1. Add to .autoforge/allowed_commands.yaml for this project, OR\n"
             error_msg += "  2. Request mid-session approval (the agent can ask)\n"
             error_msg += "Note: Some commands are blocked at org-level and cannot be overridden."
             return {

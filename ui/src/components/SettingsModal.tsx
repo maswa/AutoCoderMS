@@ -1,6 +1,8 @@
-import { Loader2, AlertCircle, Check, Moon, Sun } from 'lucide-react'
-import { useSettings, useUpdateSettings, useAvailableModels } from '../hooks/useProjects'
+import { useState } from 'react'
+import { Loader2, AlertCircle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { useSettings, useUpdateSettings, useAvailableModels, useAvailableProviders } from '../hooks/useProjects'
 import { useTheme, THEMES } from '../hooks/useTheme'
+import type { ProviderInfo } from '../lib/types'
 import {
   Dialog,
   DialogContent,
@@ -17,11 +19,25 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
+const PROVIDER_INFO_TEXT: Record<string, string> = {
+  claude: 'Default provider. Uses your Claude CLI credentials.',
+  kimi: 'Get an API key at kimi.com',
+  glm: 'Get an API key at open.bigmodel.cn',
+  ollama: 'Run models locally. Install from ollama.com',
+  custom: 'Connect to any OpenAI-compatible API endpoint.',
+}
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { data: settings, isLoading, isError, refetch } = useSettings()
   const { data: modelsData } = useAvailableModels()
+  const { data: providersData } = useAvailableProviders()
   const updateSettings = useUpdateSettings()
   const { theme, setTheme, darkMode, toggleDarkMode } = useTheme()
+
+  const [showAuthToken, setShowAuthToken] = useState(false)
+  const [authTokenInput, setAuthTokenInput] = useState('')
+  const [customModelInput, setCustomModelInput] = useState('')
+  const [customBaseUrlInput, setCustomBaseUrlInput] = useState('')
 
   const handleYoloToggle = () => {
     if (settings && !updateSettings.isPending) {
@@ -31,7 +47,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const handleModelChange = (modelId: string) => {
     if (!updateSettings.isPending) {
-      updateSettings.mutate({ model: modelId })
+      updateSettings.mutate({ api_model: modelId })
     }
   }
 
@@ -53,12 +69,51 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleProviderChange = (providerId: string) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ api_provider: providerId })
+      // Reset local state
+      setAuthTokenInput('')
+      setShowAuthToken(false)
+      setCustomModelInput('')
+      setCustomBaseUrlInput('')
+    }
+  }
+
+  const handleSaveAuthToken = () => {
+    if (authTokenInput.trim() && !updateSettings.isPending) {
+      updateSettings.mutate({ api_auth_token: authTokenInput.trim() })
+      setAuthTokenInput('')
+      setShowAuthToken(false)
+    }
+  }
+
+  const handleSaveCustomBaseUrl = () => {
+    if (customBaseUrlInput.trim() && !updateSettings.isPending) {
+      updateSettings.mutate({ api_base_url: customBaseUrlInput.trim() })
+    }
+  }
+
+  const handleSaveCustomModel = () => {
+    if (customModelInput.trim() && !updateSettings.isPending) {
+      updateSettings.mutate({ api_model: customModelInput.trim() })
+      setCustomModelInput('')
+    }
+  }
+
+  const providers = providersData?.providers ?? []
   const models = modelsData?.models ?? []
   const isSaving = updateSettings.isPending
+  const currentProvider = settings?.api_provider ?? 'claude'
+  const currentProviderInfo: ProviderInfo | undefined = providers.find(p => p.id === currentProvider)
+  const isAlternativeProvider = currentProvider !== 'claude'
+  const showAuthField = isAlternativeProvider && currentProviderInfo?.requires_auth
+  const showBaseUrlField = currentProvider === 'custom'
+  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama'
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-sm max-h-[85vh] overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="sm:max-w-sm max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Settings
@@ -165,6 +220,147 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             <hr className="border-border" />
 
+            {/* API Provider Selection */}
+            <div className="space-y-3">
+              <Label className="font-medium">API Provider</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {providers.map((provider) => (
+                  <button
+                    key={provider.id}
+                    onClick={() => handleProviderChange(provider.id)}
+                    disabled={isSaving}
+                    className={`py-1.5 px-3 text-sm font-medium rounded-md border transition-colors ${
+                      currentProvider === provider.id
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-foreground border-border hover:bg-muted'
+                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {provider.name.split(' (')[0]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {PROVIDER_INFO_TEXT[currentProvider] ?? ''}
+              </p>
+
+              {/* Auth Token Field */}
+              {showAuthField && (
+                <div className="space-y-2 pt-1">
+                  <Label className="text-sm">API Key</Label>
+                  {settings.api_has_auth_token && !authTokenInput && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <ShieldCheck size={14} className="text-green-500" />
+                      <span>Configured</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto py-0.5 px-2 text-xs"
+                        onClick={() => setAuthTokenInput(' ')}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  )}
+                  {(!settings.api_has_auth_token || authTokenInput) && (
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showAuthToken ? 'text' : 'password'}
+                          value={authTokenInput.trim()}
+                          onChange={(e) => setAuthTokenInput(e.target.value)}
+                          placeholder="Enter API key..."
+                          className="w-full py-1.5 px-3 pe-9 text-sm border rounded-md bg-background"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAuthToken(!showAuthToken)}
+                          className="absolute end-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showAuthToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveAuthToken}
+                        disabled={!authTokenInput.trim() || isSaving}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Custom Base URL Field */}
+              {showBaseUrlField && (
+                <div className="space-y-2 pt-1">
+                  <Label className="text-sm">Base URL</Label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={customBaseUrlInput || settings.api_base_url || ''}
+                      onChange={(e) => setCustomBaseUrlInput(e.target.value)}
+                      placeholder="https://api.example.com/v1"
+                      className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleSaveCustomBaseUrl}
+                      disabled={!customBaseUrlInput.trim() || isSaving}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Model Selection */}
+            <div className="space-y-2">
+              <Label className="font-medium">Model</Label>
+              {models.length > 0 && (
+                <div className="flex rounded-lg border overflow-hidden">
+                  {models.map((model) => (
+                    <button
+                      key={model.id}
+                      onClick={() => handleModelChange(model.id)}
+                      disabled={isSaving}
+                      className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                        (settings.api_model ?? settings.model) === model.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-background text-foreground hover:bg-muted'
+                      } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <span className="block">{model.name}</span>
+                      <span className="block text-xs opacity-60">{model.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Custom model input for Ollama/Custom */}
+              {showCustomModelInput && (
+                <div className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={customModelInput}
+                    onChange={(e) => setCustomModelInput(e.target.value)}
+                    placeholder="Custom model name..."
+                    className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveCustomModel()}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSaveCustomModel}
+                    disabled={!customModelInput.trim() || isSaving}
+                  >
+                    Set
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <hr className="border-border" />
+
             {/* YOLO Mode Toggle */}
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
@@ -228,27 +424,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 onCheckedChange={() => updateSettings.mutate({ playwright_headless: !(settings?.playwright_headless ?? true) })}
                 disabled={isSaving}
               />
-            </div>
-
-            {/* Model Selection */}
-            <div className="space-y-2">
-              <Label className="font-medium">Model</Label>
-              <div className="flex rounded-lg border overflow-hidden">
-                {models.map((model) => (
-                  <button
-                    key={model.id}
-                    onClick={() => handleModelChange(model.id)}
-                    disabled={isSaving}
-                    className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
-                      settings.model === model.id
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background text-foreground hover:bg-muted'
-                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {model.name}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Regression Agents */}

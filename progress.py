@@ -46,7 +46,7 @@ def has_features(project_dir: Path) -> bool:
         return True
 
     # Check SQLite database
-    from autocoder_paths import get_features_db_path
+    from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return False
@@ -72,7 +72,7 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     Returns:
         (passing_count, in_progress_count, total_count)
     """
-    from autocoder_paths import get_features_db_path
+    from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return 0, 0, 0
@@ -122,7 +122,7 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
     Returns:
         List of dicts with id, category, name for each passing feature
     """
-    from autocoder_paths import get_features_db_path
+    from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return []
@@ -147,7 +147,7 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
     if not WEBHOOK_URL:
         return  # Webhook not configured
 
-    from autocoder_paths import get_progress_cache_path
+    from autoforge_paths import get_progress_cache_path
     cache_file = get_progress_cache_path(project_dir)
     previous = 0
     previous_passing_ids = set()

@@ -18,17 +18,19 @@ See [CUSTOM_UPDATES.md](CUSTOM_UPDATES.md) for detailed documentation of all add
 
 ## Video Tutorial
 
-[![Watch the tutorial](https://img.youtube.com/vi/lGWFlpffWk4/hqdefault.jpg)](https://youtu.be/lGWFlpffWk4)
+[![Watch the tutorial](https://img.youtube.com/vi/nKiPOxDpcJY/hqdefault.jpg)](https://youtu.be/nKiPOxDpcJY)
 
-> **[Watch the setup and usage guide →](https://youtu.be/lGWFlpffWk4)**
+> **[Watch the setup and usage guide →](https://youtu.be/nKiPOxDpcJY)**
 
 ---
 
 ## Prerequisites
 
-### Claude Code CLI (Required)
+- **Node.js 20+** - Required for the CLI
+- **Python 3.11+** - Auto-detected on first run ([download](https://www.python.org/downloads/))
+- **Claude Code CLI** - Install and authenticate (see below)
 
-This project requires the Claude Code CLI to be installed. Install it using one of these methods:
+### Claude Code CLI (Required)
 
 **macOS / Linux:**
 ```bash
@@ -51,17 +53,50 @@ You need one of the following:
 
 ## Quick Start
 
-### Option 1: Web UI (Recommended)
+### Option 1: npm Install (Recommended)
 
-**Windows:**
-```cmd
-start_ui.bat
-```
-
-**macOS / Linux:**
 ```bash
-./start_ui.sh
+npm install -g autoforge-ai
+autoforge
 ```
+
+On first run, AutoForge automatically:
+1. Checks for Python 3.11+
+2. Creates a virtual environment at `~/.autoforge/venv/`
+3. Installs Python dependencies
+4. Copies a default config file to `~/.autoforge/.env`
+5. Starts the server and opens your browser
+
+### CLI Commands
+
+```
+autoforge                       Start the server (default)
+autoforge config                Open ~/.autoforge/.env in $EDITOR
+autoforge config --path         Print config file path
+autoforge config --show         Show active configuration values
+autoforge --port PORT           Custom port (default: auto from 8888)
+autoforge --host HOST           Custom host (default: 127.0.0.1)
+autoforge --no-browser          Don't auto-open browser
+autoforge --repair              Delete and recreate virtual environment
+autoforge --version             Print version
+autoforge --help                Show help
+```
+
+### Option 2: From Source (Development)
+
+Clone the repository and use the start scripts directly. This is the recommended path if you want to contribute or modify AutoForge itself.
+
+```bash
+git clone https://github.com/leonvanzyl/autoforge.git
+cd autoforge
+```
+
+**Web UI:**
+
+| Platform | Command |
+|---|---|
+| Windows | `start_ui.bat` |
+| macOS / Linux | `./start_ui.sh` |
 
 This launches the React-based web UI at `http://localhost:5173` with:
 - Project selection and creation
@@ -69,17 +104,12 @@ This launches the React-based web UI at `http://localhost:5173` with:
 - Real-time agent output streaming
 - Start/pause/stop controls
 
-### Option 2: CLI Mode
+**CLI Mode:**
 
-**Windows:**
-```cmd
-start.bat
-```
-
-**macOS / Linux:**
-```bash
-./start.sh
-```
+| Platform | Command |
+|---|---|
+| Windows | `start.bat` |
+| macOS / Linux | `./start.sh` |
 
 The start script will:
 1. Check if Claude CLI is installed
@@ -160,19 +190,17 @@ For working with **existing projects**, the Research Agent analyzes your codebas
 ## Project Structure
 
 ```
-autonomous-coding/
-├── start.bat                 # Windows CLI start script
-├── start.sh                  # macOS/Linux CLI start script
-├── start_ui.bat              # Windows Web UI start script
-├── start_ui.sh               # macOS/Linux Web UI start script
-├── start.py                  # CLI menu and project management
-├── start_ui.py               # Web UI backend (FastAPI server launcher)
-├── autonomous_agent_demo.py  # Agent entry point
-├── agent.py                  # Agent session logic
-├── client.py                 # Claude SDK client configuration
-├── security.py               # Bash command allowlist and validation
-├── progress.py               # Progress tracking utilities
-├── prompts.py                # Prompt loading utilities
+autoforge/
+├── bin/                         # npm CLI entry point
+├── lib/                         # CLI bootstrap and setup logic
+├── start.py                     # CLI menu and project management
+├── start_ui.py                  # Web UI backend (FastAPI server launcher)
+├── autonomous_agent_demo.py     # Agent entry point
+├── agent.py                     # Agent session logic
+├── client.py                    # Claude SDK client configuration
+├── security.py                  # Bash command allowlist and validation
+├── progress.py                  # Progress tracking utilities
+├── prompts.py                   # Prompt loading utilities
 ├── api/
 │   ├── database.py           # SQLAlchemy models (Feature table)
 │   ├── research_database.py  # Research agent data models
@@ -183,26 +211,27 @@ autonomous-coding/
 │   ├── feature_mcp.py        # MCP server for feature management tools
 │   └── research_mcp.py       # MCP server for research agent
 ├── server/
-│   ├── main.py               # FastAPI REST API server
-│   ├── websocket.py          # WebSocket handler for real-time updates
-│   ├── schemas.py            # Pydantic schemas
-│   ├── routers/              # API route handlers
-│   └── services/             # Business logic services
-├── ui/                       # React frontend
+│   ├── main.py                  # FastAPI REST API server
+│   ├── websocket.py             # WebSocket handler for real-time updates
+│   ├── schemas.py               # Pydantic schemas
+│   ├── routers/                 # API route handlers
+│   └── services/                # Business logic services
+├── ui/                          # React frontend
 │   ├── src/
-│   │   ├── App.tsx           # Main app component
-│   │   ├── hooks/            # React Query and WebSocket hooks
-│   │   └── lib/              # API client and types
+│   │   ├── App.tsx              # Main app component
+│   │   ├── hooks/               # React Query and WebSocket hooks
+│   │   └── lib/                 # API client and types
 │   ├── package.json
 │   └── vite.config.ts
 ├── .claude/
 │   ├── commands/
-│   │   └── create-spec.md    # /create-spec slash command
-│   ├── skills/               # Claude Code skills
-│   └── templates/            # Prompt templates
-├── generations/              # Generated projects go here
-├── requirements.txt          # Python dependencies
-└── .env                      # Optional configuration (N8N webhook)
+│   │   └── create-spec.md       # /create-spec slash command
+│   ├── skills/                  # Claude Code skills
+│   └── templates/               # Prompt templates
+├── requirements.txt             # Python dependencies (development)
+├── requirements-prod.txt        # Python dependencies (npm install)
+├── package.json                 # npm package definition
+└── .env                         # Optional configuration
 ```
 
 ---
@@ -299,11 +328,20 @@ The UI receives live updates via WebSocket (`/ws/projects/{project_name}`):
 
 ---
 
-## Configuration (Optional)
+## Configuration
+
+AutoForge reads configuration from a `.env` file. The file location depends on how you installed AutoForge:
+
+| Install method | Config file location | Edit command |
+|---|---|---|
+| npm (global) | `~/.autoforge/.env` | `autoforge config` |
+| From source | `.env` in the project root | Edit directly |
+
+A default config file is created automatically on first run. Use `autoforge config` to open it in your editor, or `autoforge config --show` to print the active values.
 
 ### N8N Webhook Integration
 
-The agent can send progress notifications to an N8N webhook. Create a `.env` file:
+Add to your `.env` to send progress notifications to an N8N webhook:
 
 ```bash
 # Optional: N8N webhook for progress notifications
@@ -323,22 +361,28 @@ When test progress increases, the agent sends:
 }
 ```
 
-### Using GLM Models (Alternative to Claude)
+### Alternative API Providers (GLM, Ollama, Kimi, Custom)
 
-To use Zhipu AI's GLM models instead of Claude, add these variables to your `.env` file in the AutoCoder directory:
+Alternative providers are configured via the **Settings UI** (gear icon > API Provider). Select your provider, set the base URL, auth token, and model directly in the UI — no `.env` changes needed.
+
+Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Custom**
+
+For Ollama, install [Ollama v0.14.0+](https://ollama.com), run `ollama serve`, and pull a coding model (e.g., `ollama pull qwen3-coder`). Then select "Ollama" in the Settings UI.
+
+### Using Vertex AI
+
+Add these variables to your `.env` file to run agents via Google Cloud Vertex AI:
 
 ```bash
-ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
-ANTHROPIC_AUTH_TOKEN=your-zhipu-api-key
-API_TIMEOUT_MS=3000000
-ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
-ANTHROPIC_DEFAULT_OPUS_MODEL=glm-4.7
-ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air
+CLAUDE_CODE_USE_VERTEX=1
+CLOUD_ML_REGION=us-east5
+ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project-id
+ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-6
+ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-5@20250929
+ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-3-5-haiku@20241022
 ```
 
-This routes AutoCoder's API requests through Zhipu's Claude-compatible API, allowing you to use GLM-4.7 and other models. **This only affects AutoCoder** - your global Claude Code settings remain unchanged.
-
-Get an API key at: https://z.ai/subscribe
+Requires `gcloud auth application-default login` first. Note the `@` separator (not `-`) in Vertex AI model names.
 
 ---
 
@@ -403,6 +447,18 @@ This is normal. The initializer agent is generating detailed test cases, which t
 
 **"Command blocked by security hook"**
 The agent tried to run a command not in the allowlist. This is the security system working as intended. If needed, add the command to `ALLOWED_COMMANDS` in `security.py`.
+
+**"Python 3.11+ required but not found"**
+Install Python 3.11 or later from [python.org](https://www.python.org/downloads/). Make sure `python3` (or `python` on Windows) is on your PATH.
+
+**"Python venv module not available"**
+On Debian/Ubuntu, the venv module is packaged separately. Install it with `sudo apt install python3.XX-venv` (replace `XX` with your Python minor version, e.g., `python3.12-venv`).
+
+**"AutoForge is already running"**
+A server instance is already active. Use the browser URL shown in the terminal, or stop the existing instance with Ctrl+C first.
+
+**Virtual environment issues after a Python upgrade**
+Run `autoforge --repair` to delete and recreate the virtual environment from scratch.
 
 ---
 

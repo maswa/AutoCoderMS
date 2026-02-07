@@ -79,9 +79,9 @@ def test_blocked_command_via_hook():
         project_dir = Path(tmpdir)
 
         # Create minimal project structure
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
-        (autocoder_dir / "allowed_commands.yaml").write_text(
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
+        (autoforge_dir / "allowed_commands.yaml").write_text(
             "version: 1\ncommands: []"
         )
 
@@ -114,9 +114,9 @@ def test_allowed_command_via_hook():
         project_dir = Path(tmpdir)
 
         # Create minimal project structure
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
-        (autocoder_dir / "allowed_commands.yaml").write_text(
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
+        (autoforge_dir / "allowed_commands.yaml").write_text(
             "version: 1\ncommands: []"
         )
 
@@ -145,9 +145,9 @@ def test_non_allowed_command_via_hook():
         project_dir = Path(tmpdir)
 
         # Create minimal project structure
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
-        (autocoder_dir / "allowed_commands.yaml").write_text(
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
+        (autoforge_dir / "allowed_commands.yaml").write_text(
             "version: 1\ncommands: []"
         )
 
@@ -179,9 +179,9 @@ def test_project_config_allows_command():
         project_dir = Path(tmpdir)
 
         # Create project config with swift allowed
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
-        (autocoder_dir / "allowed_commands.yaml").write_text("""version: 1
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
+        (autoforge_dir / "allowed_commands.yaml").write_text("""version: 1
 commands:
   - name: swift
     description: Swift compiler
@@ -214,9 +214,9 @@ def test_pattern_matching():
         project_dir = Path(tmpdir)
 
         # Create project config with swift* pattern
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
-        (autocoder_dir / "allowed_commands.yaml").write_text("""version: 1
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
+        (autoforge_dir / "allowed_commands.yaml").write_text("""version: 1
 commands:
   - name: swift*
     description: All Swift tools
@@ -247,7 +247,7 @@ def test_org_blocklist_enforcement():
         with tempfile.TemporaryDirectory() as tmpproject:
             # Use context manager to safely set and restore HOME
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 (org_dir / "config.yaml").write_text("""version: 1
 allowed_commands: []
@@ -257,11 +257,11 @@ blocked_commands:
 """)
 
                 project_dir = Path(tmpproject)
-                autocoder_dir = project_dir / ".autocoder"
-                autocoder_dir.mkdir()
+                autoforge_dir = project_dir / ".autoforge"
+                autoforge_dir.mkdir()
 
                 # Try to allow terraform in project config (should fail - org blocked)
-                (autocoder_dir / "allowed_commands.yaml").write_text("""version: 1
+                (autoforge_dir / "allowed_commands.yaml").write_text("""version: 1
 commands:
   - name: terraform
     description: Infrastructure as code
@@ -295,7 +295,7 @@ def test_org_allowlist_inheritance():
         with tempfile.TemporaryDirectory() as tmpproject:
             # Use context manager to safely set and restore HOME
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 (org_dir / "config.yaml").write_text("""version: 1
 allowed_commands:
@@ -305,9 +305,9 @@ blocked_commands: []
 """)
 
                 project_dir = Path(tmpproject)
-                autocoder_dir = project_dir / ".autocoder"
-                autocoder_dir.mkdir()
-                (autocoder_dir / "allowed_commands.yaml").write_text(
+                autoforge_dir = project_dir / ".autoforge"
+                autoforge_dir.mkdir()
+                (autoforge_dir / "allowed_commands.yaml").write_text(
                     "version: 1\ncommands: []"
                 )
 
@@ -336,9 +336,9 @@ def test_invalid_yaml_ignored():
         project_dir = Path(tmpdir)
 
         # Create invalid YAML
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
-        (autocoder_dir / "allowed_commands.yaml").write_text("invalid: yaml: content:")
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
+        (autoforge_dir / "allowed_commands.yaml").write_text("invalid: yaml: content:")
 
         # Try to run ls (should still work - falls back to defaults)
         input_data = {"tool_name": "Bash", "tool_input": {"command": "ls"}}
@@ -365,13 +365,13 @@ def test_100_command_limit():
         project_dir = Path(tmpdir)
 
         # Create config with 101 commands
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
 
         commands = [
             f"  - name: cmd{i}\n    description: Command {i}" for i in range(101)
         ]
-        (autocoder_dir / "allowed_commands.yaml").write_text(
+        (autoforge_dir / "allowed_commands.yaml").write_text(
             "version: 1\ncommands:\n" + "\n".join(commands)
         )
 

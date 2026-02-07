@@ -276,7 +276,7 @@ async def delete_project(name: str, delete_files: bool = False):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     # Check if agent is running
-    from autocoder_paths import has_agent_running
+    from autoforge_paths import has_agent_running
     if has_agent_running(project_dir):
         raise HTTPException(
             status_code=409,
@@ -512,7 +512,7 @@ async def reset_project(name: str, full_reset: bool = False):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     # Check if agent is running
-    from autocoder_paths import has_agent_running
+    from autoforge_paths import has_agent_running
     if has_agent_running(project_dir):
         raise HTTPException(
             status_code=409,
@@ -529,7 +529,7 @@ async def reset_project(name: str, full_reset: bool = False):
 
     deleted_files: list[str] = []
 
-    from autocoder_paths import (
+    from autoforge_paths import (
         get_assistant_db_path,
         get_claude_assistant_settings_path,
         get_claude_settings_path,
@@ -571,7 +571,7 @@ async def reset_project(name: str, full_reset: bool = False):
 
     # Full reset: also delete prompts directory
     if full_reset:
-        from autocoder_paths import get_prompts_dir
+        from autoforge_paths import get_prompts_dir
         # Delete prompts from both possible locations
         for prompts_dir in [get_prompts_dir(project_dir), project_dir / "prompts"]:
             if prompts_dir.exists():

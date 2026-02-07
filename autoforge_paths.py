@@ -1,17 +1,19 @@
 """
-Autocoder Path Resolution
+AutoForge Path Resolution
 =========================
 
-Central module for resolving paths to autocoder-generated files within a project.
+Central module for resolving paths to autoforge-generated files within a project.
 
-Implements a dual-path resolution strategy for backward compatibility:
+Implements a tri-path resolution strategy for backward compatibility:
 
-    1. Check ``project_dir / ".autocoder" / X`` (new layout)
-    2. Check ``project_dir / X`` (legacy root-level layout)
-    3. Default to the new location for fresh projects
+    1. Check ``project_dir / ".autoforge" / X`` (current layout)
+    2. Check ``project_dir / ".autocoder" / X`` (legacy layout)
+    3. Check ``project_dir / X`` (legacy root-level layout)
+    4. Default to the new location for fresh projects
 
 This allows existing projects with root-level ``features.db``, ``.agent.lock``,
-etc. to keep working while new projects store everything under ``.autocoder/``.
+etc. to keep working while new projects store everything under ``.autoforge/``.
+Projects using the old ``.autocoder/`` directory are auto-migrated on next start.
 
 The ``migrate_project_layout`` function can move an old-layout project to the
 new layout safely, with full integrity checks for SQLite databases.
@@ -25,10 +27,10 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# .gitignore content written into every .autocoder/ directory
+# .gitignore content written into every .autoforge/ directory
 # ---------------------------------------------------------------------------
 _GITIGNORE_CONTENT = """\
-# Autocoder runtime files
+# AutoForge runtime files
 features.db
 features.db-wal
 features.db-shm
@@ -49,15 +51,18 @@ assistant.db-shm
 # ---------------------------------------------------------------------------
 
 def _resolve_path(project_dir: Path, filename: str) -> Path:
-    """Resolve a file path using dual-path strategy.
+    """Resolve a file path using tri-path strategy.
 
-    Checks the new ``.autocoder/`` location first, then falls back to the
-    legacy root-level location.  If neither exists, returns the new location
-    so that newly-created files land in ``.autocoder/``.
+    Checks the new ``.autoforge/`` location first, then the legacy
+    ``.autocoder/`` location, then the root-level location.  If none exist,
+    returns the new location so that newly-created files land in ``.autoforge/``.
     """
-    new = project_dir / ".autocoder" / filename
+    new = project_dir / ".autoforge" / filename
     if new.exists():
         return new
+    legacy = project_dir / ".autocoder" / filename
+    if legacy.exists():
+        return legacy
     old = project_dir / filename
     if old.exists():
         return old
@@ -65,14 +70,17 @@ def _resolve_path(project_dir: Path, filename: str) -> Path:
 
 
 def _resolve_dir(project_dir: Path, dirname: str) -> Path:
-    """Resolve a directory path using dual-path strategy.
+    """Resolve a directory path using tri-path strategy.
 
     Same logic as ``_resolve_path`` but intended for directories such as
     ``prompts/``.
     """
-    new = project_dir / ".autocoder" / dirname
+    new = project_dir / ".autoforge" / dirname
     if new.exists():
         return new
+    legacy = project_dir / ".autocoder" / dirname
+    if legacy.exists():
+        return legacy
     old = project_dir / dirname
     if old.exists():
         return old
@@ -80,27 +88,27 @@ def _resolve_dir(project_dir: Path, dirname: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# .autocoder directory management
+# .autoforge directory management
 # ---------------------------------------------------------------------------
 
-def get_autocoder_dir(project_dir: Path) -> Path:
-    """Return the ``.autocoder`` directory path.  Does NOT create it."""
-    return project_dir / ".autocoder"
+def get_autoforge_dir(project_dir: Path) -> Path:
+    """Return the ``.autoforge`` directory path.  Does NOT create it."""
+    return project_dir / ".autoforge"
 
 
-def ensure_autocoder_dir(project_dir: Path) -> Path:
-    """Create the ``.autocoder/`` directory (if needed) and write its ``.gitignore``.
+def ensure_autoforge_dir(project_dir: Path) -> Path:
+    """Create the ``.autoforge/`` directory (if needed) and write its ``.gitignore``.
 
     Returns:
-        The path to the ``.autocoder`` directory.
+        The path to the ``.autoforge`` directory.
     """
-    autocoder_dir = get_autocoder_dir(project_dir)
-    autocoder_dir.mkdir(parents=True, exist_ok=True)
+    autoforge_dir = get_autoforge_dir(project_dir)
+    autoforge_dir.mkdir(parents=True, exist_ok=True)
 
-    gitignore_path = autocoder_dir / ".gitignore"
+    gitignore_path = autoforge_dir / ".gitignore"
     gitignore_path.write_text(_GITIGNORE_CONTENT, encoding="utf-8")
 
-    return autocoder_dir
+    return autoforge_dir
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +162,9 @@ def get_prompts_dir(project_dir: Path) -> Path:
 def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     """Return the path for an ephemeral expand-session settings file.
 
-    These files are short-lived and always stored in ``.autocoder/``.
+    These files are short-lived and always stored in ``.autoforge/``.
     """
-    return project_dir / ".autocoder" / f".claude_settings.expand.{uuid_hex}.json"
+    return project_dir / ".autoforge" / f".claude_settings.expand.{uuid_hex}.json"
 
 
 # ---------------------------------------------------------------------------
@@ -166,8 +174,9 @@ def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
 def has_agent_running(project_dir: Path) -> bool:
     """Check whether any agent or dev-server lock file exists at either location.
 
-    Inspects both the legacy root-level paths and the new ``.autocoder/``
-    paths so that a running agent is detected regardless of project layout.
+    Inspects the legacy root-level paths, the old ``.autocoder/`` paths, and
+    the new ``.autoforge/`` paths so that a running agent is detected
+    regardless of project layout.
 
     Returns:
         ``True`` if any ``.agent.lock`` or ``.devserver.lock`` exists.
@@ -176,7 +185,10 @@ def has_agent_running(project_dir: Path) -> bool:
     for name in lock_names:
         if (project_dir / name).exists():
             return True
+        # Check both old and new directory names for backward compatibility
         if (project_dir / ".autocoder" / name).exists():
+            return True
+        if (project_dir / ".autoforge" / name).exists():
             return True
     return False
 
@@ -186,7 +198,7 @@ def has_agent_running(project_dir: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 def migrate_project_layout(project_dir: Path) -> list[str]:
-    """Migrate a project from the legacy root-level layout to ``.autocoder/``.
+    """Migrate a project from the legacy root-level layout to ``.autoforge/``.
 
     The migration is incremental and safe:
 
@@ -199,7 +211,7 @@ def migrate_project_layout(project_dir: Path) -> list[str]:
 
     Returns:
         A list of human-readable descriptions of what was migrated, e.g.
-        ``["prompts/ -> .autocoder/prompts/", "features.db -> .autocoder/features.db"]``.
+        ``["prompts/ -> .autoforge/prompts/", "features.db -> .autoforge/features.db"]``.
         An empty list means nothing was migrated (either everything is
         already migrated, or the agent is running).
     """
@@ -208,18 +220,31 @@ def migrate_project_layout(project_dir: Path) -> list[str]:
         logger.warning("Migration skipped: agent or dev-server is running for %s", project_dir)
         return []
 
-    autocoder_dir = ensure_autocoder_dir(project_dir)
-    migrated: list[str] = []
+    # --- 0. Migrate .autocoder/ → .autoforge/ directory -------------------
+    old_autocoder_dir = project_dir / ".autocoder"
+    new_autoforge_dir = project_dir / ".autoforge"
+    if old_autocoder_dir.exists() and old_autocoder_dir.is_dir() and not new_autoforge_dir.exists():
+        try:
+            old_autocoder_dir.rename(new_autoforge_dir)
+            logger.info("Migrated .autocoder/ -> .autoforge/")
+            migrated: list[str] = [".autocoder/ -> .autoforge/"]
+        except Exception:
+            logger.warning("Failed to migrate .autocoder/ -> .autoforge/", exc_info=True)
+            migrated = []
+    else:
+        migrated = []
+
+    autoforge_dir = ensure_autoforge_dir(project_dir)
 
     # --- 1. Migrate prompts/ directory -----------------------------------
     try:
         old_prompts = project_dir / "prompts"
-        new_prompts = autocoder_dir / "prompts"
+        new_prompts = autoforge_dir / "prompts"
         if old_prompts.exists() and old_prompts.is_dir() and not new_prompts.exists():
             shutil.copytree(str(old_prompts), str(new_prompts))
             shutil.rmtree(str(old_prompts))
-            migrated.append("prompts/ -> .autocoder/prompts/")
-            logger.info("Migrated prompts/ -> .autocoder/prompts/")
+            migrated.append("prompts/ -> .autoforge/prompts/")
+            logger.info("Migrated prompts/ -> .autoforge/prompts/")
     except Exception:
         logger.warning("Failed to migrate prompts/ directory", exc_info=True)
 
@@ -228,7 +253,7 @@ def migrate_project_layout(project_dir: Path) -> list[str]:
     for db_name in db_names:
         try:
             old_db = project_dir / db_name
-            new_db = autocoder_dir / db_name
+            new_db = autoforge_dir / db_name
             if old_db.exists() and not new_db.exists():
                 # Flush WAL to ensure all data is in the main database file
                 conn = sqlite3.connect(str(old_db))
@@ -263,8 +288,8 @@ def migrate_project_layout(project_dir: Path) -> list[str]:
                     wal_file = project_dir / f"{db_name}{suffix}"
                     wal_file.unlink(missing_ok=True)
 
-                migrated.append(f"{db_name} -> .autocoder/{db_name}")
-                logger.info("Migrated %s -> .autocoder/%s", db_name, db_name)
+                migrated.append(f"{db_name} -> .autoforge/{db_name}")
+                logger.info("Migrated %s -> .autoforge/%s", db_name, db_name)
         except Exception:
             logger.warning("Failed to migrate %s", db_name, exc_info=True)
 
@@ -279,11 +304,11 @@ def migrate_project_layout(project_dir: Path) -> list[str]:
     for filename in simple_files:
         try:
             old_file = project_dir / filename
-            new_file = autocoder_dir / filename
+            new_file = autoforge_dir / filename
             if old_file.exists() and not new_file.exists():
                 shutil.move(str(old_file), str(new_file))
-                migrated.append(f"{filename} -> .autocoder/{filename}")
-                logger.info("Migrated %s -> .autocoder/%s", filename, filename)
+                migrated.append(f"{filename} -> .autoforge/{filename}")
+                logger.info("Migrated %s -> .autoforge/%s", filename, filename)
         except Exception:
             logger.warning("Failed to migrate %s", filename, exc_info=True)
 

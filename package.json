@@ -1,0 +1,54 @@
+{
+  "name": "autoforge-ai",
+  "version": "0.1.8",
+  "description": "Autonomous coding agent with web UI - build complete apps with AI",
+  "license": "AGPL-3.0",
+  "bin": {
+    "autoforge": "./bin/autoforge.js"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "api/",
+    "server/",
+    "mcp_server/",
+    "ui/dist/",
+    "ui/package.json",
+    ".claude/commands/",
+    ".claude/templates/",
+    "examples/",
+    "start.py",
+    "agent.py",
+    "auth.py",
+    "autoforge_paths.py",
+    "autonomous_agent_demo.py",
+    "client.py",
+    "env_constants.py",
+    "parallel_orchestrator.py",
+    "progress.py",
+    "prompts.py",
+    "registry.py",
+    "rate_limit_utils.py",
+    "security.py",
+    "temp_cleanup.py",
+    "requirements-prod.txt",
+    "pyproject.toml",
+    ".env.example",
+    "!**/__pycache__/",
+    "!**/*.pyc"
+  ],
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "claude",
+    "autonomous",
+    "code-generation"
+  ],
+  "scripts": {
+    "prepublishOnly": "npm --prefix ui install && npm --prefix ui run build"
+  }
+}

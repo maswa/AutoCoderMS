@@ -24,6 +24,7 @@ import type {
   Settings,
   SettingsUpdate,
   ModelsResponse,
+  ProvidersResponse,
   DevServerStatusResponse,
   DevServerConfig,
   TerminalInfo,
@@ -411,6 +412,10 @@ export async function deleteAssistantConversation(
 
 export async function getAvailableModels(): Promise<ModelsResponse> {
   return fetchJSON('/settings/models')
+}
+
+export async function getAvailableProviders(): Promise<ProvidersResponse> {
+  return fetchJSON('/settings/providers')
 }
 
 export async function getSettings(): Promise<Settings> {

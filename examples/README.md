@@ -1,4 +1,4 @@
-# AutoCoder Security Configuration Examples
+# AutoForge Security Configuration Examples
 
 This directory contains example configuration files for controlling which bash commands the autonomous coding agent can execute.
 
@@ -18,11 +18,11 @@ This directory contains example configuration files for controlling which bash c
 
 ### For a Single Project (Most Common)
 
-When you create a new project with AutoCoder, it automatically creates:
+When you create a new project with AutoForge, it automatically creates:
 
 ```text
 my-project/
-  .autocoder/
+  .autoforge/
     allowed_commands.yaml    ← Automatically created from template
 ```
 
@@ -34,17 +34,17 @@ If you want commands available across **all projects**, manually create:
 
 ```bash
 # Copy the example to your home directory
-cp examples/org_config.yaml ~/.autocoder/config.yaml
+cp examples/org_config.yaml ~/.autoforge/config.yaml
 
 # Edit it to add org-wide commands
-nano ~/.autocoder/config.yaml
+nano ~/.autoforge/config.yaml
 ```
 
 ---
 
 ## Project-Level Configuration
 
-**File:** `{project_dir}/.autocoder/allowed_commands.yaml`
+**File:** `{project_dir}/.autoforge/allowed_commands.yaml`
 
 **Purpose:** Define commands needed for THIS specific project.
 
@@ -82,7 +82,7 @@ commands:
 
 ## Organization-Level Configuration
 
-**File:** `~/.autocoder/config.yaml`
+**File:** `~/.autoforge/config.yaml`
 
 **Purpose:** Define commands and policies for ALL projects.
 
@@ -127,13 +127,13 @@ When the agent tries to run a command, the system checks in this order:
 └─────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────┐
-│ 2. ORG BLOCKLIST (~/.autocoder/config.yaml)         │
+│ 2. ORG BLOCKLIST (~/.autoforge/config.yaml)         │
 │    Commands you block organization-wide             │
 │    ❌ Projects CANNOT override these                │
 └─────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────┐
-│ 3. ORG ALLOWLIST (~/.autocoder/config.yaml)         │
+│ 3. ORG ALLOWLIST (~/.autoforge/config.yaml)         │
 │    Commands available to all projects               │
 │    ✅ Automatically available                       │
 └─────────────────────────────────────────────────────┘
@@ -145,7 +145,7 @@ When the agent tries to run a command, the system checks in this order:
 └─────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────┐
-│ 5. PROJECT ALLOWLIST (.autocoder/allowed_commands)  │
+│ 5. PROJECT ALLOWLIST (.autoforge/allowed_commands)  │
 │    Project-specific commands                        │
 │    ✅ Available only to this project                │
 └─────────────────────────────────────────────────────┘
@@ -195,7 +195,7 @@ Matches:
 
 ### iOS Development
 
-**Project config** (`.autocoder/allowed_commands.yaml`):
+**Project config** (`.autoforge/allowed_commands.yaml`):
 ```yaml
 version: 1
 commands:
@@ -245,7 +245,7 @@ commands:
 
 ### Enterprise Organization (Restrictive)
 
-**Org config** (`~/.autocoder/config.yaml`):
+**Org config** (`~/.autoforge/config.yaml`):
 ```yaml
 version: 1
 
@@ -265,7 +265,7 @@ blocked_commands:
 
 ### Startup Team (Permissive)
 
-**Org config** (`~/.autocoder/config.yaml`):
+**Org config** (`~/.autoforge/config.yaml`):
 ```yaml
 version: 1
 
@@ -394,7 +394,7 @@ These commands are **NEVER allowed**, even with user approval:
 
 **Solution:** Add the command to your project config:
 ```yaml
-# In .autocoder/allowed_commands.yaml
+# In .autoforge/allowed_commands.yaml
 commands:
   - name: X
     description: What this command does
@@ -405,7 +405,7 @@ commands:
 **Cause:** The command is in the org blocklist or hardcoded blocklist.
 
 **Solution:**
-- If in org blocklist: Edit `~/.autocoder/config.yaml` to remove it
+- If in org blocklist: Edit `~/.autoforge/config.yaml` to remove it
 - If in hardcoded blocklist: Cannot be allowed (by design)
 
 ### Error: "Could not parse YAML config"
@@ -422,8 +422,8 @@ commands:
 **Solution:**
 1. Restart the agent (changes are loaded on startup)
 2. Verify file location:
-   - Project: `{project}/.autocoder/allowed_commands.yaml`
-   - Org: `~/.autocoder/config.yaml` (must be manually created)
+   - Project: `{project}/.autoforge/allowed_commands.yaml`
+   - Org: `~/.autoforge/config.yaml` (must be manually created)
 3. Check YAML is valid (run through a YAML validator)
 
 ---
@@ -432,7 +432,7 @@ commands:
 
 ### Running the Tests
 
-AutoCoder has comprehensive tests for the security system:
+AutoForge has comprehensive tests for the security system:
 
 **Unit Tests** (136 tests - fast):
 ```bash
@@ -481,7 +481,7 @@ python start.py
 cd path/to/security-test
 
 # Edit the config
-nano .autocoder/allowed_commands.yaml
+nano .autoforge/allowed_commands.yaml
 ```
 
 **3. Add a test command (e.g., Swift):**
@@ -509,7 +509,7 @@ Or:
 ```text
 Command 'wget' is not allowed.
 To allow this command:
-  1. Add to .autocoder/allowed_commands.yaml for this project, OR
+  1. Add to .autoforge/allowed_commands.yaml for this project, OR
   2. Request mid-session approval (the agent can ask)
 ```
 

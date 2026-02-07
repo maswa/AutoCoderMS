@@ -6,7 +6,7 @@ Handles project type detection and dev command configuration.
 Detects project types by scanning for configuration files and provides
 default or custom dev commands for each project.
 
-Configuration is stored in {project_dir}/.autocoder/config.json.
+Configuration is stored in {project_dir}/.autoforge/config.json.
 """
 
 import json
@@ -88,13 +88,22 @@ def _get_config_path(project_dir: Path) -> Path:
     """
     Get the path to the project config file.
 
+    Checks the new .autoforge/ location first, falls back to .autocoder/
+    for backward compatibility.
+
     Args:
         project_dir: Path to the project directory.
 
     Returns:
-        Path to the .autocoder/config.json file.
+        Path to the config.json file in the appropriate directory.
     """
-    return project_dir / ".autocoder" / "config.json"
+    new_path = project_dir / ".autoforge" / "config.json"
+    if new_path.exists():
+        return new_path
+    old_path = project_dir / ".autocoder" / "config.json"
+    if old_path.exists():
+        return old_path
+    return new_path
 
 
 def _load_config(project_dir: Path) -> dict:
@@ -137,7 +146,7 @@ def _save_config(project_dir: Path, config: dict) -> None:
     """
     Save the project configuration to disk.
 
-    Creates the .autocoder directory if it doesn't exist.
+    Creates the .autoforge directory if it doesn't exist.
 
     Args:
         project_dir: Path to the project directory.
@@ -148,7 +157,7 @@ def _save_config(project_dir: Path, config: dict) -> None:
     """
     config_path = _get_config_path(project_dir)
 
-    # Ensure the .autocoder directory exists
+    # Ensure the .autoforge directory exists
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -408,11 +417,11 @@ def clear_dev_command(project_dir: Path) -> None:
             config_path.unlink(missing_ok=True)
             logger.info("Removed empty config file for %s", project_dir.name)
 
-            # Also remove .autocoder directory if empty
-            autocoder_dir = config_path.parent
-            if autocoder_dir.exists() and not any(autocoder_dir.iterdir()):
-                autocoder_dir.rmdir()
-                logger.debug("Removed empty .autocoder directory for %s", project_dir.name)
+            # Also remove .autoforge directory if empty
+            autoforge_dir = config_path.parent
+            if autoforge_dir.exists() and not any(autoforge_dir.iterdir()):
+                autoforge_dir.rmdir()
+                logger.debug("Removed empty .autoforge directory for %s", project_dir.name)
         except OSError as e:
             logger.warning("Failed to clean up config for %s: %s", project_dir.name, e)
     else:

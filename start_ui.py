@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AutoCoder UI Launcher
+AutoForge UI Launcher
 =====================
 
 Automated launcher that handles all setup:
@@ -265,7 +265,7 @@ def start_dev_server(port: int, host: str = "127.0.0.1") -> tuple:
     # Set environment for remote access if needed
     env = os.environ.copy()
     if host != "127.0.0.1":
-        env["AUTOCODER_ALLOW_REMOTE"] = "1"
+        env["AUTOFORGE_ALLOW_REMOTE"] = "1"
 
     # Start FastAPI
     backend = subprocess.Popen([
@@ -297,7 +297,7 @@ def start_production_server(port: int, host: str = "127.0.0.1"):
 
     # Enable remote access in server if not localhost
     if host != "127.0.0.1":
-        env["AUTOCODER_ALLOW_REMOTE"] = "1"
+        env["AUTOFORGE_ALLOW_REMOTE"] = "1"
 
     # NOTE: --reload is NOT used because on Windows it breaks asyncio subprocess
     # support (uvicorn's reload worker doesn't inherit the ProactorEventLoop policy).
@@ -313,7 +313,7 @@ def start_production_server(port: int, host: str = "127.0.0.1"):
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="AutoCoder UI Launcher")
+    parser = argparse.ArgumentParser(description="AutoForge UI Launcher")
     parser.add_argument("--dev", action="store_true", help="Run in development mode with Vite hot reload")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=None, help="Port to bind to (default: auto-detect from 8888)")
@@ -328,7 +328,7 @@ def main() -> None:
         print("  SECURITY WARNING")
         print("!" * 50)
         print(f"  Remote access enabled on host: {host}")
-        print("  The AutoCoder UI will be accessible from other machines.")
+        print("  The AutoForge UI will be accessible from other machines.")
         print("  Ensure you understand the security implications:")
         print("  - The agent has file system access to project directories")
         print("  - The API can start/stop agents and modify files")
@@ -336,7 +336,7 @@ def main() -> None:
         print("!" * 50 + "\n")
 
     print("=" * 50)
-    print("  AutoCoder UI Setup")
+    print("  AutoForge UI Setup")
     print("=" * 50)
 
     total_steps = 6 if not dev_mode else 5

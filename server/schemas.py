@@ -205,9 +205,12 @@ class AgentStartRequest(BaseModel):
     @field_validator('model')
     @classmethod
     def validate_model(cls, v: str | None) -> str | None:
-        """Validate model is in the allowed list."""
+        """Validate model is in the allowed list (Claude) or allow any model for alternative providers."""
         if v is not None and v not in VALID_MODELS:
-            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+            from registry import get_all_settings
+            settings = get_all_settings()
+            if settings.get("api_provider", "claude") == "claude":
+                raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
         return v
 
     @field_validator('max_concurrency')
@@ -429,16 +432,36 @@ class ModelInfo(BaseModel):
     name: str
 
 
+class ProviderInfo(BaseModel):
+    """Information about an API provider."""
+    id: str
+    name: str
+    base_url: str | None = None
+    models: list[ModelInfo]
+    default_model: str
+    requires_auth: bool = False
+
+
+class ProvidersResponse(BaseModel):
+    """Response schema for available providers list."""
+    providers: list[ProviderInfo]
+    current: str
+
+
 class SettingsResponse(BaseModel):
     """Response schema for global settings."""
     yolo_mode: bool = False
     model: str = DEFAULT_MODEL
-    glm_mode: bool = False  # True if GLM API is configured via .env
-    ollama_mode: bool = False  # True if Ollama API is configured via .env
+    glm_mode: bool = False  # True when api_provider is "glm"
+    ollama_mode: bool = False  # True when api_provider is "ollama"
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
     testing_mode: str = DEFAULT_TESTING_MODE  # Testing mode: full, smart, minimal, off
     playwright_headless: bool = True
     batch_size: int = 3  # Features per coding agent batch (1-3)
+    api_provider: str = "claude"
+    api_base_url: str | None = None
+    api_has_auth_token: bool = False  # Never expose actual token
+    api_model: str | None = None
 
 
 class ModelsResponse(BaseModel):
@@ -455,12 +478,30 @@ class SettingsUpdate(BaseModel):
     testing_mode: str | None = None  # full, smart, minimal, off
     playwright_headless: bool | None = None
     batch_size: int | None = None  # Features per agent batch (1-3)
+    api_provider: str | None = None
+    api_base_url: str | None = Field(None, max_length=500)
+    api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned
+    api_model: str | None = Field(None, max_length=200)
+
+    @field_validator('api_base_url')
+    @classmethod
+    def validate_api_base_url(cls, v: str | None) -> str | None:
+        if v is not None and v.strip():
+            v = v.strip()
+            if not v.startswith(("http://", "https://")):
+                raise ValueError("api_base_url must start with http:// or https://")
+        return v
 
     @field_validator('model')
     @classmethod
-    def validate_model(cls, v: str | None) -> str | None:
-        if v is not None and v not in VALID_MODELS:
-            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+    def validate_model(cls, v: str | None, info) -> str | None:  # type: ignore[override]
+        if v is not None:
+            # Skip VALID_MODELS check when using an alternative API provider
+            api_provider = info.data.get("api_provider")
+            if api_provider and api_provider != "claude":
+                return v
+            if v not in VALID_MODELS:
+                raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
         return v
 
     @field_validator('testing_mode')
@@ -580,9 +621,12 @@ class ScheduleCreate(BaseModel):
     @field_validator('model')
     @classmethod
     def validate_model(cls, v: str | None) -> str | None:
-        """Validate model is in the allowed list."""
+        """Validate model is in the allowed list (Claude) or allow any model for alternative providers."""
         if v is not None and v not in VALID_MODELS:
-            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+            from registry import get_all_settings
+            settings = get_all_settings()
+            if settings.get("api_provider", "claude") == "claude":
+                raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
         return v
 
 
@@ -602,9 +646,12 @@ class ScheduleUpdate(BaseModel):
     @field_validator('model')
     @classmethod
     def validate_model(cls, v: str | None) -> str | None:
-        """Validate model is in the allowed list."""
+        """Validate model is in the allowed list (Claude) or allow any model for alternative providers."""
         if v is not None and v not in VALID_MODELS:
-            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+            from registry import get_all_settings
+            settings = get_all_settings()
+            if settings.get("api_provider", "claude") == "claude":
+                raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
         return v
 
 

@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, AssistantChatServerMessage } from "../lib/types";
+import type { ChatMessage, AssistantChatServerMessage, SpecQuestion } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -17,8 +17,10 @@ interface UseAssistantChatReturn {
   isLoading: boolean;
   connectionStatus: ConnectionStatus;
   conversationId: number | null;
+  currentQuestions: SpecQuestion[] | null;
   start: (conversationId?: number | null) => void;
   sendMessage: (content: string) => void;
+  sendAnswer: (answers: Record<string, string | string[]>) => void;
   disconnect: () => void;
   clearMessages: () => void;
 }
@@ -36,6 +38,7 @@ export function useAssistantChat({
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("disconnected");
   const [conversationId, setConversationId] = useState<number | null>(null);
+  const [currentQuestions, setCurrentQuestions] = useState<SpecQuestion[] | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -204,6 +207,25 @@ export function useAssistantChat({
             break;
           }
 
+          case "question": {
+            // Claude is asking structured questions via ask_user tool
+            setCurrentQuestions(data.questions);
+            setIsLoading(false);
+
+            // Attach questions to the last assistant message for display context
+            setMessages((prev) => {
+              const lastMessage = prev[prev.length - 1];
+              if (lastMessage?.role === "assistant" && lastMessage.isStreaming) {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...lastMessage, isStreaming: false, questions: data.questions },
+                ];
+              }
+              return prev;
+            });
+            break;
+          }
+
           case "conversation_created": {
             setConversationId(data.conversation_id);
             break;
@@ -327,6 +349,49 @@ export function useAssistantChat({
     [onError],
   );
 
+  const sendAnswer = useCallback(
+    (answers: Record<string, string | string[]>) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        onError?.("Not connected");
+        return;
+      }
+
+      // Format answers as display text for user message
+      const answerParts: string[] = [];
+      for (const [, value] of Object.entries(answers)) {
+        if (Array.isArray(value)) {
+          answerParts.push(value.join(", "));
+        } else {
+          answerParts.push(value);
+        }
+      }
+      const displayText = answerParts.join("; ");
+
+      // Add user message to chat
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          role: "user",
+          content: displayText,
+          timestamp: new Date(),
+        },
+      ]);
+
+      setCurrentQuestions(null);
+      setIsLoading(true);
+
+      // Send structured answer to server
+      wsRef.current.send(
+        JSON.stringify({
+          type: "answer",
+          answers,
+        }),
+      );
+    },
+    [onError],
+  );
+
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection
     if (pingIntervalRef.current) {
@@ -350,8 +415,10 @@ export function useAssistantChat({
     isLoading,
     connectionStatus,
     conversationId,
+    currentQuestions,
     start,
     sendMessage,
+    sendAnswer,
     disconnect,
     clearMessages,
   };

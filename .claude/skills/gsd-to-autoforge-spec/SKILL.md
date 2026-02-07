@@ -1,21 +1,21 @@
 ---
-name: gsd-to-autocoder-spec
+name: gsd-to-autoforge-spec
 description: |
-  Convert GSD codebase mapping to Autocoder app_spec.txt. This skill should be used when
-  the user has run /gsd:map-codebase and wants to use Autocoder on an existing project.
-  Triggers: "convert to autocoder", "gsd to spec", "create app_spec from codebase",
-  "use autocoder on existing project", after /gsd:map-codebase completion.
+  Convert GSD codebase mapping to AutoForge app_spec.txt. This skill should be used when
+  the user has run /gsd:map-codebase and wants to use AutoForge on an existing project.
+  Triggers: "convert to autoforge", "gsd to spec", "create app_spec from codebase",
+  "use autoforge on existing project", after /gsd:map-codebase completion.
 ---
 
-# GSD to Autocoder Spec Converter
+# GSD to AutoForge Spec Converter
 
-Converts `.planning/codebase/*.md` (GSD mapping output) to `.autocoder/prompts/app_spec.txt` (Autocoder format).
+Converts `.planning/codebase/*.md` (GSD mapping output) to `.autoforge/prompts/app_spec.txt` (AutoForge format).
 
 ## When to Use
 
 - After running `/gsd:map-codebase` on an existing project
-- When onboarding an existing codebase to Autocoder
-- User wants Autocoder to continue development on existing code
+- When onboarding an existing codebase to AutoForge
+- User wants AutoForge to continue development on existing code
 
 ## Prerequisites
 
@@ -86,12 +86,12 @@ Extract:
 
 Create `prompts/` directory:
 ```bash
-mkdir -p .autocoder/prompts
+mkdir -p .autoforge/prompts
 ```
 
-**Mapping GSD Documents to Autocoder Spec:**
+**Mapping GSD Documents to AutoForge Spec:**
 
-| GSD Source | Autocoder Target |
+| GSD Source | AutoForge Target |
 |------------|------------------|
 | STACK.md Languages | `<technology_stack>` |
 | STACK.md Frameworks | `<frontend>`, `<backend>` |
@@ -116,7 +116,7 @@ mkdir -p .autocoder/prompts
 **Write the spec file** using the XML format from [references/app-spec-format.md](references/app-spec-format.md):
 
 ```bash
-cat > .autocoder/prompts/app_spec.txt << 'EOF'
+cat > .autoforge/prompts/app_spec.txt << 'EOF'
 <project_specification>
   <project_name>{from package.json or directory}</project_name>
 
@@ -175,9 +175,9 @@ EOF
 ### Step 5: Verify Generated Spec
 
 ```bash
-head -100 .autocoder/prompts/app_spec.txt
+head -100 .autoforge/prompts/app_spec.txt
 echo "---"
-grep -c "User can\|System\|API\|Feature" .autocoder/prompts/app_spec.txt || echo "0"
+grep -c "User can\|System\|API\|Feature" .autoforge/prompts/app_spec.txt || echo "0"
 ```
 
 **Validation checklist:**
@@ -196,15 +196,15 @@ Output:
 app_spec.txt generated from GSD codebase mapping.
 
 Source: .planning/codebase/*.md
-Output: .autocoder/prompts/app_spec.txt
+Output: .autoforge/prompts/app_spec.txt
 
-Next: Start Autocoder
+Next: Start AutoForge
 
   cd {project_dir}
-  python ~/projects/autocoder/start.py
+  python ~/projects/autoforge/start.py
 
 Or via UI:
-  ~/projects/autocoder/start_ui.sh
+  ~/projects/autoforge/start_ui.sh
 
 The Initializer will create features.db from this spec.
 ```

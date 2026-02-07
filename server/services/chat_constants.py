@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 # -------------------------------------------------------------------
-# Root directory of the autocoder project (repository root).
+# Root directory of the autoforge project (repository root).
 # Used throughout the server package whenever the repo root is needed.
 # -------------------------------------------------------------------
 ROOT_DIR = Path(__file__).parent.parent.parent

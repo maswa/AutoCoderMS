@@ -7,12 +7,11 @@ Settings are stored in the registry database and shared across all projects.
 """
 
 import mimetypes
-import os
 import sys
 
 from fastapi import APIRouter
 
-from ..schemas import ModelInfo, ModelsResponse, SettingsResponse, SettingsUpdate
+from ..schemas import ModelInfo, ModelsResponse, ProviderInfo, ProvidersResponse, SettingsResponse, SettingsUpdate
 from ..services.chat_constants import ROOT_DIR
 
 # Mimetype fix for Windows - must run before StaticFiles is mounted
@@ -23,9 +22,11 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from registry import (
+    API_PROVIDERS,
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
     get_all_settings,
+    get_setting,
     set_setting,
 )
 
@@ -37,26 +38,40 @@ def _parse_yolo_mode(value: str | None) -> bool:
     return (value or "false").lower() == "true"
 
 
-def _is_glm_mode() -> bool:
-    """Check if GLM API is configured via environment variables."""
-    base_url = os.getenv("ANTHROPIC_BASE_URL", "")
-    # GLM mode is when ANTHROPIC_BASE_URL is set but NOT pointing to Ollama
-    return bool(base_url) and not _is_ollama_mode()
-
-
-def _is_ollama_mode() -> bool:
-    """Check if Ollama API is configured via environment variables."""
-    base_url = os.getenv("ANTHROPIC_BASE_URL", "")
-    return "localhost:11434" in base_url or "127.0.0.1:11434" in base_url
+@router.get("/providers", response_model=ProvidersResponse)
+async def get_available_providers():
+    """Get list of available API providers."""
+    current = get_setting("api_provider", "claude") or "claude"
+    providers = []
+    for pid, pdata in API_PROVIDERS.items():
+        providers.append(ProviderInfo(
+            id=pid,
+            name=pdata["name"],
+            base_url=pdata.get("base_url"),
+            models=[ModelInfo(id=m["id"], name=m["name"]) for m in pdata.get("models", [])],
+            default_model=pdata.get("default_model", ""),
+            requires_auth=pdata.get("requires_auth", False),
+        ))
+    return ProvidersResponse(providers=providers, current=current)
 
 
 @router.get("/models", response_model=ModelsResponse)
 async def get_available_models():
     """Get list of available models.
 
-    Frontend should call this to get the current list of models
-    instead of hardcoding them.
+    Returns models for the currently selected API provider.
     """
+    current_provider = get_setting("api_provider", "claude") or "claude"
+    provider = API_PROVIDERS.get(current_provider)
+
+    if provider and current_provider != "claude":
+        provider_models = provider.get("models", [])
+        return ModelsResponse(
+            models=[ModelInfo(id=m["id"], name=m["name"]) for m in provider_models],
+            default=provider.get("default_model", ""),
+        )
+
+    # Default: return Claude models
     return ModelsResponse(
         models=[ModelInfo(id=m["id"], name=m["name"]) for m in AVAILABLE_MODELS],
         default=DEFAULT_MODEL,
@@ -85,15 +100,24 @@ async def get_settings():
     """Get current global settings."""
     all_settings = get_all_settings()
 
+    api_provider = all_settings.get("api_provider", "claude")
+
+    glm_mode = api_provider == "glm"
+    ollama_mode = api_provider == "ollama"
+
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
-        glm_mode=_is_glm_mode(),
-        ollama_mode=_is_ollama_mode(),
+        glm_mode=glm_mode,
+        ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
         testing_mode=all_settings.get("testing_mode", "full"),
         playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=True),
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
+        api_provider=api_provider,
+        api_base_url=all_settings.get("api_base_url"),
+        api_has_auth_token=bool(all_settings.get("api_auth_token")),
+        api_model=all_settings.get("api_model"),
     )
 
 
@@ -118,15 +142,48 @@ async def update_settings(update: SettingsUpdate):
     if update.batch_size is not None:
         set_setting("batch_size", str(update.batch_size))
 
+    # API provider settings
+    if update.api_provider is not None:
+        old_provider = get_setting("api_provider", "claude")
+        set_setting("api_provider", update.api_provider)
+
+        # When provider changes, auto-set defaults for the new provider
+        if update.api_provider != old_provider:
+            provider = API_PROVIDERS.get(update.api_provider)
+            if provider:
+                # Auto-set base URL from provider definition
+                if provider.get("base_url"):
+                    set_setting("api_base_url", provider["base_url"])
+                # Auto-set model to provider's default
+                if provider.get("default_model") and update.api_model is None:
+                    set_setting("api_model", provider["default_model"])
+
+    if update.api_base_url is not None:
+        set_setting("api_base_url", update.api_base_url)
+
+    if update.api_auth_token is not None:
+        set_setting("api_auth_token", update.api_auth_token)
+
+    if update.api_model is not None:
+        set_setting("api_model", update.api_model)
+
     # Return updated settings
     all_settings = get_all_settings()
+    api_provider = all_settings.get("api_provider", "claude")
+    glm_mode = api_provider == "glm"
+    ollama_mode = api_provider == "ollama"
+
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
-        glm_mode=_is_glm_mode(),
-        ollama_mode=_is_ollama_mode(),
+        glm_mode=glm_mode,
+        ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
         testing_mode=all_settings.get("testing_mode", "full"),
         playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=True),
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
+        api_provider=api_provider,
+        api_base_url=all_settings.get("api_base_url"),
+        api_has_auth_token=bool(all_settings.get("api_auth_token")),
+        api_model=all_settings.get("api_model"),
     )

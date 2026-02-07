@@ -39,7 +39,7 @@ def _get_settings_defaults() -> tuple[bool, str, int, str, bool, int]:
 
     settings = get_all_settings()
     yolo_mode = (settings.get("yolo_mode") or "false").lower() == "true"
-    model = settings.get("model", DEFAULT_MODEL)
+    model = settings.get("api_model") or settings.get("model", DEFAULT_MODEL)
 
     # Parse testing agent settings with defaults
     try:

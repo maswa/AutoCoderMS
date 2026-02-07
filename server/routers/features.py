@@ -126,7 +126,7 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_features_db_path
+    from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return FeatureListResponse(pending=[], in_progress=[], done=[])
@@ -322,7 +322,7 @@ async def get_dependency_graph(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_features_db_path
+    from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return DependencyGraphResponse(nodes=[], edges=[])
@@ -388,7 +388,7 @@ async def get_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_features_db_path
+    from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         raise HTTPException(status_code=404, detail="No features database found")

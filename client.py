@@ -16,7 +16,6 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookContext, HookInput, HookMatcher, SyncHookJSONOutput
 from dotenv import load_dotenv
 
-from env_constants import API_ENV_VARS
 from security import SENSITIVE_DIRECTORIES, bash_security_hook
 
 # Load environment variables from .env file if present
@@ -46,8 +45,9 @@ def convert_model_for_vertex(model: str) -> str:
     """
     Convert model name format for Vertex AI compatibility.
 
-    Vertex AI uses @ to separate model name from version (e.g., claude-opus-4-5@20251101)
-    while the Anthropic API uses - (e.g., claude-opus-4-5-20251101).
+    Vertex AI uses @ to separate model name from version (e.g., claude-sonnet-4-5@20250929)
+    while the Anthropic API uses - (e.g., claude-sonnet-4-5-20250929).
+    Models without a date suffix (e.g., claude-opus-4-6) pass through unchanged.
 
     Args:
         model: Model name in Anthropic format (with hyphens)
@@ -61,7 +61,7 @@ def convert_model_for_vertex(model: str) -> str:
         return model
 
     # Pattern: claude-{name}-{version}-{date} -> claude-{name}-{version}@{date}
-    # Example: claude-opus-4-5-20251101 -> claude-opus-4-5@20251101
+    # Example: claude-sonnet-4-5-20250929 -> claude-sonnet-4-5@20250929
     # The date is always 8 digits at the end
     match = re.match(r'^(claude-.+)-(\d{8})$', model)
     if match:
@@ -443,7 +443,7 @@ def create_client(
     project_dir.mkdir(parents=True, exist_ok=True)
 
     # Write settings to a file in the project directory
-    from autocoder_paths import get_claude_settings_path
+    from autoforge_paths import get_claude_settings_path
     settings_file = get_claude_settings_path(project_dir)
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     with open(settings_file, "w") as f:
@@ -531,14 +531,11 @@ def create_client(
         }
 
     # Build environment overrides for API endpoint configuration
-    # These override system env vars for the Claude CLI subprocess,
-    # allowing AutoCoder to use alternative APIs (e.g., GLM) without
-    # affecting the user's global Claude Code settings
-    sdk_env = {}
-    for var in API_ENV_VARS:
-        value = os.getenv(var)
-        if value:
-            sdk_env[var] = value
+    # Uses get_effective_sdk_env() which reads provider settings from the database,
+    # ensuring UI-configured alternative providers (GLM, Ollama, Kimi, Custom) propagate
+    # correctly to the Claude CLI subprocess
+    from registry import get_effective_sdk_env
+    sdk_env = get_effective_sdk_env()
 
     # Detect alternative API mode (Ollama, GLM, or Vertex AI)
     base_url = sdk_env.get("ANTHROPIC_BASE_URL", "")

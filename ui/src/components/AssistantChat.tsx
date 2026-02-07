@@ -11,6 +11,7 @@ import { Send, Loader2, Wifi, WifiOff, Plus, History } from 'lucide-react'
 import { useAssistantChat } from '../hooks/useAssistantChat'
 import { ChatMessage as ChatMessageComponent } from './ChatMessage'
 import { ConversationHistory } from './ConversationHistory'
+import { QuestionOptions } from './QuestionOptions'
 import type { ChatMessage } from '../lib/types'
 import { isSubmitEnter } from '../lib/keyboard'
 import { Button } from '@/components/ui/button'
@@ -52,8 +53,10 @@ export function AssistantChat({
     isLoading,
     connectionStatus,
     conversationId: activeConversationId,
+    currentQuestions,
     start,
     sendMessage,
+    sendAnswer,
     clearMessages,
   } = useAssistantChat({
     projectName,
@@ -268,6 +271,16 @@ export function AssistantChat({
         </div>
       )}
 
+      {/* Structured questions from assistant */}
+      {currentQuestions && (
+        <div className="border-t border-border bg-background">
+          <QuestionOptions
+            questions={currentQuestions}
+            onSubmit={sendAnswer}
+          />
+        </div>
+      )}
+
       {/* Input area */}
       <div className="border-t border-border p-4 bg-card">
         <div className="flex gap-2">
@@ -277,13 +290,13 @@ export function AssistantChat({
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the codebase..."
-            disabled={isLoading || isLoadingConversation || connectionStatus !== 'connected'}
+            disabled={isLoading || isLoadingConversation || connectionStatus !== 'connected' || !!currentQuestions}
             className="flex-1 resize-none min-h-[44px] max-h-[120px]"
             rows={1}
           />
           <Button
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading || isLoadingConversation || connectionStatus !== 'connected'}
+            disabled={!inputValue.trim() || isLoading || isLoadingConversation || connectionStatus !== 'connected' || !!currentQuestions}
             title="Send message"
           >
             {isLoading ? (
@@ -294,7 +307,7 @@ export function AssistantChat({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Press Enter to send, Shift+Enter for new line
+          {currentQuestions ? 'Select an option above to continue' : 'Press Enter to send, Shift+Enter for new line'}
         </p>
       </div>
     </div>

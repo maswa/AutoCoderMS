@@ -1,6 +1,6 @@
-# Organization-Level AutoCoder Configuration
+# Organization-Level AutoForge Configuration
 # ============================================
-# Location: ~/.autocoder/config.yaml
+# Location: ~/.autoforge/config.yaml
 #
 # IMPORTANT: This file is OPTIONAL and must be manually created by you.
 # It does NOT exist by default.
@@ -22,7 +22,7 @@ version: 1
 # Organization-Wide Allowed Commands
 # ==========================================
 # These commands become available to ALL projects automatically.
-# Projects don't need to add them to their own .autocoder/allowed_commands.yaml
+# Projects don't need to add them to their own .autoforge/allowed_commands.yaml
 #
 # By default, this is empty. Uncomment and add commands as needed.
 
@@ -122,7 +122,7 @@ approval_timeout_minutes: 5
 #    Default commands: npm, git, curl, ls, cat, etc.
 #    Always available to all projects.
 #
-# 5. Project Allowed Commands (.autocoder/allowed_commands.yaml)
+# 5. Project Allowed Commands (.autoforge/allowed_commands.yaml)
 #    Project-specific commands defined in each project.
 #    LOWEST PRIORITY (can't override blocks above).
 #
@@ -165,7 +165,7 @@ approval_timeout_minutes: 5
 # ==========================================
 # To Create This File
 # ==========================================
-# 1. Copy this example to: ~/.autocoder/config.yaml
+# 1. Copy this example to: ~/.autoforge/config.yaml
 # 2. Uncomment and customize the sections you need
 # 3. Leave empty lists if you don't need org-level controls
 #

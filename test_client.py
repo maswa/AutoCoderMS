@@ -40,15 +40,15 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_returns_model_unchanged_when_vertex_disabled(self):
         os.environ.pop("CLAUDE_CODE_USE_VERTEX", None)
         self.assertEqual(
-            convert_model_for_vertex("claude-opus-4-5-20251101"),
-            "claude-opus-4-5-20251101",
+            convert_model_for_vertex("claude-opus-4-6"),
+            "claude-opus-4-6",
         )
 
     def test_returns_model_unchanged_when_vertex_set_to_zero(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "0"
         self.assertEqual(
-            convert_model_for_vertex("claude-opus-4-5-20251101"),
-            "claude-opus-4-5-20251101",
+            convert_model_for_vertex("claude-opus-4-6"),
+            "claude-opus-4-6",
         )
 
     def test_returns_model_unchanged_when_vertex_set_to_empty(self):
@@ -60,11 +60,18 @@ class TestConvertModelForVertex(unittest.TestCase):
 
     # --- Vertex AI enabled: standard conversions ---
 
-    def test_converts_opus_model(self):
+    def test_converts_legacy_opus_model(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(
             convert_model_for_vertex("claude-opus-4-5-20251101"),
             "claude-opus-4-5@20251101",
+        )
+
+    def test_opus_4_6_passthrough_on_vertex(self):
+        os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
+        self.assertEqual(
+            convert_model_for_vertex("claude-opus-4-6"),
+            "claude-opus-4-6",
         )
 
     def test_converts_sonnet_model(self):
@@ -86,8 +93,8 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_already_vertex_format_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(
-            convert_model_for_vertex("claude-opus-4-5@20251101"),
-            "claude-opus-4-5@20251101",
+            convert_model_for_vertex("claude-sonnet-4-5@20250929"),
+            "claude-sonnet-4-5@20250929",
         )
 
     def test_non_claude_model_unchanged(self):
@@ -100,8 +107,8 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_model_without_date_suffix_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(
-            convert_model_for_vertex("claude-opus-4-5"),
-            "claude-opus-4-5",
+            convert_model_for_vertex("claude-opus-4-6"),
+            "claude-opus-4-6",
         )
 
     def test_empty_string_unchanged(self):

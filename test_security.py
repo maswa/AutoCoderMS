@@ -273,11 +273,11 @@ def test_yaml_loading():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         project_dir = Path(tmpdir)
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
 
         # Test 1: Valid YAML
-        config_path = autocoder_dir / "allowed_commands.yaml"
+        config_path = autoforge_dir / "allowed_commands.yaml"
         config_path.write_text("""version: 1
 commands:
   - name: swift
@@ -297,7 +297,7 @@ commands:
             failed += 1
 
         # Test 2: Missing file returns None
-        (project_dir / ".autocoder" / "allowed_commands.yaml").unlink()
+        (project_dir / ".autoforge" / "allowed_commands.yaml").unlink()
         config = load_project_commands(project_dir)
         if config is None:
             print("  PASS: Missing file returns None")
@@ -407,11 +407,11 @@ def test_project_commands():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         project_dir = Path(tmpdir)
-        autocoder_dir = project_dir / ".autocoder"
-        autocoder_dir.mkdir()
+        autoforge_dir = project_dir / ".autoforge"
+        autoforge_dir.mkdir()
 
         # Create a config with Swift commands
-        config_path = autocoder_dir / "allowed_commands.yaml"
+        config_path = autoforge_dir / "allowed_commands.yaml"
         config_path.write_text("""version: 1
 commands:
   - name: swift
@@ -482,7 +482,7 @@ def test_org_config_loading():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Use temporary_home for cross-platform compatibility
         with temporary_home(tmpdir):
-            org_dir = Path(tmpdir) / ".autocoder"
+            org_dir = Path(tmpdir) / ".autoforge"
             org_dir.mkdir()
             org_config_path = org_dir / "config.yaml"
 
@@ -576,7 +576,7 @@ def test_hierarchy_resolution():
         with tempfile.TemporaryDirectory() as tmpproject:
             # Use temporary_home for cross-platform compatibility
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 
@@ -593,9 +593,9 @@ blocked_commands:
 """)
 
                 project_dir = Path(tmpproject)
-                project_autocoder = project_dir / ".autocoder"
-                project_autocoder.mkdir()
-                project_config = project_autocoder / "allowed_commands.yaml"
+                project_autoforge = project_dir / ".autoforge"
+                project_autoforge.mkdir()
+                project_config = project_autoforge / "allowed_commands.yaml"
 
                 # Create project config
                 project_config.write_text("""version: 1
@@ -660,7 +660,7 @@ def test_org_blocklist_enforcement():
         with tempfile.TemporaryDirectory() as tmpproject:
             # Use temporary_home for cross-platform compatibility
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 
@@ -671,8 +671,8 @@ blocked_commands:
 """)
 
                 project_dir = Path(tmpproject)
-                project_autocoder = project_dir / ".autocoder"
-                project_autocoder.mkdir()
+                project_autoforge = project_dir / ".autoforge"
+                project_autoforge.mkdir()
 
                 # Try to use terraform (should be blocked)
                 input_data = {"tool_name": "Bash", "tool_input": {"command": "terraform apply"}}
@@ -735,7 +735,7 @@ def test_pkill_extensibility():
     with tempfile.TemporaryDirectory() as tmphome:
         with tempfile.TemporaryDirectory() as tmpproject:
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 
@@ -762,9 +762,9 @@ pkill_processes:
         with tempfile.TemporaryDirectory() as tmpproject:
             with temporary_home(tmphome):
                 project_dir = Path(tmpproject)
-                project_autocoder = project_dir / ".autocoder"
-                project_autocoder.mkdir()
-                project_config = project_autocoder / "allowed_commands.yaml"
+                project_autoforge = project_dir / ".autoforge"
+                project_autoforge.mkdir()
+                project_config = project_autoforge / "allowed_commands.yaml"
 
                 # Create project config with extra pkill processes
                 project_config.write_text("""version: 1
@@ -804,7 +804,7 @@ pkill_processes:
     with tempfile.TemporaryDirectory() as tmphome:
         with tempfile.TemporaryDirectory() as tmpproject:
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 
@@ -829,7 +829,7 @@ pkill_processes:
     with tempfile.TemporaryDirectory() as tmphome:
         with tempfile.TemporaryDirectory() as tmpproject:
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 
@@ -851,7 +851,7 @@ pkill_processes:
     with tempfile.TemporaryDirectory() as tmphome:
         with tempfile.TemporaryDirectory() as tmpproject:
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 
@@ -875,7 +875,7 @@ pkill_processes:
     with tempfile.TemporaryDirectory() as tmphome:
         with tempfile.TemporaryDirectory() as tmpproject:
             with temporary_home(tmphome):
-                org_dir = Path(tmphome) / ".autocoder"
+                org_dir = Path(tmphome) / ".autoforge"
                 org_dir.mkdir()
                 org_config_path = org_dir / "config.yaml"
 

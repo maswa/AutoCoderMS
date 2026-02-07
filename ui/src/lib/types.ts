@@ -479,6 +479,11 @@ export interface AssistantChatConversationCreatedMessage {
   conversation_id: number
 }
 
+export interface AssistantChatQuestionMessage {
+  type: 'question'
+  questions: SpecQuestion[]
+}
+
 export interface AssistantChatPongMessage {
   type: 'pong'
 }
@@ -486,6 +491,7 @@ export interface AssistantChatPongMessage {
 export type AssistantChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
+  | AssistantChatQuestionMessage
   | AssistantChatResponseDoneMessage
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage
@@ -539,6 +545,20 @@ export interface ModelsResponse {
   default: string
 }
 
+export interface ProviderInfo {
+  id: string
+  name: string
+  base_url: string | null
+  models: ModelInfo[]
+  default_model: string
+  requires_auth: boolean
+}
+
+export interface ProvidersResponse {
+  providers: ProviderInfo[]
+  current: string
+}
+
 export interface Settings {
   yolo_mode: boolean
   model: string
@@ -548,6 +568,10 @@ export interface Settings {
   testing_mode: string  // "full", "smart", "minimal", "off"
   playwright_headless: boolean
   batch_size: number  // Features per coding agent batch (1-3)
+  api_provider: string
+  api_base_url: string | null
+  api_has_auth_token: boolean
+  api_model: string | null
 }
 
 export interface SettingsUpdate {
@@ -557,6 +581,10 @@ export interface SettingsUpdate {
   testing_mode?: string
   playwright_headless?: boolean
   batch_size?: number
+  api_provider?: string
+  api_base_url?: string
+  api_auth_token?: string
+  api_model?: string
 }
 
 export interface ProjectSettingsUpdate {

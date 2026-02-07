@@ -1,0 +1,14 @@
+# Production runtime dependencies only
+# For development, use requirements.txt (includes ruff, mypy, pytest)
+claude-agent-sdk>=0.1.0,<0.2.0
+python-dotenv>=1.0.0
+sqlalchemy>=2.0.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=13.0
+python-multipart>=0.0.17
+psutil>=6.0.0
+aiofiles>=24.0.0
+apscheduler>=3.10.0,<4.0.0
+pywinpty>=2.0.0; sys_platform == "win32"
+pyyaml>=6.0.0

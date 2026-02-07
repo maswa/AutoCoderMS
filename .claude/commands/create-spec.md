@@ -8,7 +8,7 @@ This command **requires** the project directory as an argument via `$ARGUMENTS`.
 
 **Example:** `/create-spec generations/my-app`
 
-**Output location:** `$ARGUMENTS/.autocoder/prompts/app_spec.txt` and `$ARGUMENTS/.autocoder/prompts/initializer_prompt.md`
+**Output location:** `$ARGUMENTS/.autoforge/prompts/app_spec.txt` and `$ARGUMENTS/.autoforge/prompts/initializer_prompt.md`
 
 If `$ARGUMENTS` is empty, inform the user they must provide a project path and exit.
 
@@ -347,13 +347,13 @@ First ask in conversation if they want to make changes.
 
 ## Output Directory
 
-The output directory is: `$ARGUMENTS/.autocoder/prompts/`
+The output directory is: `$ARGUMENTS/.autoforge/prompts/`
 
 Once the user approves, generate these files:
 
 ## 1. Generate `app_spec.txt`
 
-**Output path:** `$ARGUMENTS/.autocoder/prompts/app_spec.txt`
+**Output path:** `$ARGUMENTS/.autoforge/prompts/app_spec.txt`
 
 Create a new file using this XML structure:
 
@@ -489,7 +489,7 @@ Create a new file using this XML structure:
 
 ## 2. Update `initializer_prompt.md`
 
-**Output path:** `$ARGUMENTS/.autocoder/prompts/initializer_prompt.md`
+**Output path:** `$ARGUMENTS/.autoforge/prompts/initializer_prompt.md`
 
 If the output directory has an existing `initializer_prompt.md`, read it and update the feature count.
 If not, copy from `.claude/templates/initializer_prompt.template.md` first, then update.
@@ -512,7 +512,7 @@ After:  **CRITICAL:** You must create exactly **25** features using the `feature
 
 ## 3. Write Status File (REQUIRED - Do This Last)
 
-**Output path:** `$ARGUMENTS/.autocoder/prompts/.spec_status.json`
+**Output path:** `$ARGUMENTS/.autoforge/prompts/.spec_status.json`
 
 **CRITICAL:** After you have completed ALL requested file changes, write this status file to signal completion to the UI. This is required for the "Continue to Project" button to appear.
 
@@ -524,8 +524,8 @@ Write this JSON file:
   "version": 1,
   "timestamp": "[current ISO 8601 timestamp, e.g., 2025-01-15T14:30:00.000Z]",
   "files_written": [
-    ".autocoder/prompts/app_spec.txt",
-    ".autocoder/prompts/initializer_prompt.md"
+    ".autoforge/prompts/app_spec.txt",
+    ".autoforge/prompts/initializer_prompt.md"
   ],
   "feature_count": [the feature count from Phase 4L]
 }
@@ -539,9 +539,9 @@ Write this JSON file:
   "version": 1,
   "timestamp": "2025-01-15T14:30:00.000Z",
   "files_written": [
-    ".autocoder/prompts/app_spec.txt",
-    ".autocoder/prompts/initializer_prompt.md",
-    ".autocoder/prompts/coding_prompt.md"
+    ".autoforge/prompts/app_spec.txt",
+    ".autoforge/prompts/initializer_prompt.md",
+    ".autoforge/prompts/coding_prompt.md"
   ],
   "feature_count": 35
 }
@@ -559,11 +559,11 @@ Write this JSON file:
 
 Once files are generated, tell the user what to do next:
 
-> "Your specification files have been created in `$ARGUMENTS/.autocoder/prompts/`!
+> "Your specification files have been created in `$ARGUMENTS/.autoforge/prompts/`!
 >
 > **Files created:**
-> - `$ARGUMENTS/.autocoder/prompts/app_spec.txt`
-> - `$ARGUMENTS/.autocoder/prompts/initializer_prompt.md`
+> - `$ARGUMENTS/.autoforge/prompts/app_spec.txt`
+> - `$ARGUMENTS/.autoforge/prompts/initializer_prompt.md`
 >
 > The **Continue to Project** button should now appear. Click it to start the autonomous coding agent!
 >

@@ -44,8 +44,10 @@ from dotenv import load_dotenv
 # IMPORTANT: Must be called BEFORE importing other modules that read env vars at load time
 load_dotenv()
 
+import os
+
 from agent import run_autonomous_agent
-from registry import DEFAULT_MODEL, get_project_path
+from registry import DEFAULT_MODEL, get_effective_sdk_env, get_project_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -203,6 +205,14 @@ def main() -> None:
     # Note: Authentication is handled by start.bat/start.sh before this script runs.
     # The Claude SDK auto-detects credentials from ~/.claude/.credentials.json
 
+    # Apply UI-configured provider settings to this process's environment.
+    # This ensures CLI-launched agents respect Settings UI provider config (GLM, Ollama, etc.).
+    # Uses setdefault so explicit env vars / .env file take precedence.
+    sdk_overrides = get_effective_sdk_env()
+    for key, value in sdk_overrides.items():
+        if value:  # Only set non-empty values (empty values are used to clear conflicts)
+            os.environ.setdefault(key, value)
+
     # Handle deprecated --parallel flag
     if args.parallel is not None:
         print("WARNING: --parallel is deprecated. Use --concurrency instead.", flush=True)
@@ -229,11 +239,11 @@ def main() -> None:
             print("Use an absolute path or register the project first.")
             return
 
-    # Migrate project layout to .autocoder/ if needed (idempotent, safe)
-    from autocoder_paths import migrate_project_layout
+    # Migrate project layout to .autoforge/ if needed (idempotent, safe)
+    from autoforge_paths import migrate_project_layout
     migrated = migrate_project_layout(project_dir)
     if migrated:
-        print(f"Migrated project files to .autocoder/: {', '.join(migrated)}", flush=True)
+        print(f"Migrated project files to .autoforge/: {', '.join(migrated)}", flush=True)
 
     # Parse batch testing feature IDs (comma-separated string -> list[int])
     testing_feature_ids: list[int] | None = None
@@ -272,6 +282,17 @@ def main() -> None:
             )
         else:
             # Entry point mode - always use unified orchestrator
+            # Clean up stale temp files before starting (prevents temp folder bloat)
+            from temp_cleanup import cleanup_stale_temp
+            cleanup_stats = cleanup_stale_temp()
+            if cleanup_stats["dirs_deleted"] > 0 or cleanup_stats["files_deleted"] > 0:
+                mb_freed = cleanup_stats["bytes_freed"] / (1024 * 1024)
+                print(
+                    f"[CLEANUP] Removed {cleanup_stats['dirs_deleted']} dirs, "
+                    f"{cleanup_stats['files_deleted']} files ({mb_freed:.1f} MB freed)",
+                    flush=True,
+                )
+
             from parallel_orchestrator import run_parallel_orchestrator
 
             # Clamp concurrency to valid range (1-5)

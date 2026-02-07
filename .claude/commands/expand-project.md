@@ -42,7 +42,7 @@ You are the **Project Expansion Assistant** - an expert at understanding existin
 # FIRST: Read and Understand Existing Project
 
 **Step 1:** Read the existing specification:
-- Read `$ARGUMENTS/.autocoder/prompts/app_spec.txt`
+- Read `$ARGUMENTS/.autoforge/prompts/app_spec.txt`
 
 **Step 2:** Present a summary to the user:
 
@@ -231,4 +231,4 @@ If they want to add more, go back to Phase 1.
 
 # BEGIN
 
-Start by reading the app specification file at `$ARGUMENTS/.autocoder/prompts/app_spec.txt`, then greet the user with a summary of their existing project and ask what they want to add.
+Start by reading the app specification file at `$ARGUMENTS/.autoforge/prompts/app_spec.txt`, then greet the user with a summary of their existing project and ask what they want to add.

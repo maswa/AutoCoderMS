@@ -7,6 +7,8 @@
 
 import { memo } from 'react'
 import { Bot, User, Info } from 'lucide-react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { ChatMessage as ChatMessageType } from '../lib/types'
 import { Card } from '@/components/ui/card'
 
@@ -14,8 +16,16 @@ interface ChatMessageProps {
   message: ChatMessageType
 }
 
-// Module-level regex to avoid recreating on each render
-const BOLD_REGEX = /\*\*(.*?)\*\*/g
+// Stable references for memo — avoids re-renders
+const remarkPlugins = [remarkGfm]
+
+const markdownComponents: Components = {
+  a: ({ children, href, ...props }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+      {children}
+    </a>
+  ),
+}
 
 export const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
   const { role, content, attachments, timestamp, isStreaming } = message
@@ -86,39 +96,11 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
           )}
 
           <Card className={`${config.bgColor} px-4 py-3 border ${isStreaming ? 'animate-pulse' : ''}`}>
-            {/* Parse content for basic markdown-like formatting */}
             {content && (
-              <div className={`whitespace-pre-wrap text-sm leading-relaxed ${config.textColor}`}>
-                {content.split('\n').map((line, i) => {
-                  // Bold text - use module-level regex, reset lastIndex for each line
-                  BOLD_REGEX.lastIndex = 0
-                  const parts = []
-                  let lastIndex = 0
-                  let match
-
-                  while ((match = BOLD_REGEX.exec(line)) !== null) {
-                    if (match.index > lastIndex) {
-                      parts.push(line.slice(lastIndex, match.index))
-                    }
-                    parts.push(
-                      <strong key={`bold-${i}-${match.index}`} className="font-bold">
-                        {match[1]}
-                      </strong>
-                    )
-                    lastIndex = match.index + match[0].length
-                  }
-
-                  if (lastIndex < line.length) {
-                    parts.push(line.slice(lastIndex))
-                  }
-
-                  return (
-                    <span key={i}>
-                      {parts.length > 0 ? parts : line}
-                      {i < content.split('\n').length - 1 && '\n'}
-                    </span>
-                  )
-                })}
+              <div className={`text-sm leading-relaxed ${config.textColor} chat-prose${role === 'user' ? ' chat-prose-user' : ''}`}>
+                <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
+                  {content}
+                </ReactMarkdown>
               </div>
             )}
 

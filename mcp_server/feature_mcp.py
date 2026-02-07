@@ -984,5 +984,35 @@ def feature_set_dependencies(
         return json.dumps({"error": f"Failed to set dependencies: {str(e)}"})
 
 
+@mcp.tool()
+def ask_user(
+    questions: Annotated[list[dict], Field(description="List of questions to ask, each with question, header, options (list of {label, description}), and multiSelect (bool)")]
+) -> str:
+    """Ask the user structured questions with selectable options.
+
+    Use this when you need clarification or want to offer choices to the user.
+    Each question has a short header, the question text, and 2-4 clickable options.
+    The user's selections will be returned as your next message.
+
+    Args:
+        questions: List of questions, each with:
+            - question (str): The question to ask
+            - header (str): Short label (max 12 chars)
+            - options (list): Each with label (str) and description (str)
+            - multiSelect (bool): Allow multiple selections (default false)
+
+    Returns:
+        Acknowledgment that questions were presented to the user
+    """
+    # Validate input
+    for i, q in enumerate(questions):
+        if not all(key in q for key in ["question", "header", "options"]):
+            return json.dumps({"error": f"Question at index {i} missing required fields"})
+        if len(q["options"]) < 2 or len(q["options"]) > 4:
+            return json.dumps({"error": f"Question at index {i} must have 2-4 options"})
+
+    return "Questions presented to the user. Their response will arrive as your next message."
+
+
 if __name__ == "__main__":
     mcp.run()

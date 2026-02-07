@@ -3,7 +3,7 @@ cd /d "%~dp0"
 
 echo.
 echo ========================================
-echo   Autonomous Coding Agent
+echo   AutoForge - Autonomous Coding Agent
 echo ========================================
 echo.
 

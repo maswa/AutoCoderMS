@@ -19,7 +19,7 @@ TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 
 def get_project_prompts_dir(project_dir: Path) -> Path:
     """Get the prompts directory for a specific project."""
-    from autocoder_paths import get_prompts_dir
+    from autoforge_paths import get_prompts_dir
     return get_prompts_dir(project_dir)
 
 
@@ -320,9 +320,9 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
     project_prompts = get_project_prompts_dir(project_dir)
     project_prompts.mkdir(parents=True, exist_ok=True)
 
-    # Create .autocoder directory with .gitignore for runtime files
-    from autocoder_paths import ensure_autocoder_dir
-    autocoder_dir = ensure_autocoder_dir(project_dir)
+    # Create .autoforge directory with .gitignore for runtime files
+    from autoforge_paths import ensure_autoforge_dir
+    autoforge_dir = ensure_autoforge_dir(project_dir)
 
     # Define template mappings: (source_template, destination_name)
     templates = [
@@ -345,14 +345,14 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
             except (OSError, PermissionError) as e:
                 print(f"  Warning: Could not copy {dest_name}: {e}")
 
-    # Copy allowed_commands.yaml template to .autocoder/
+    # Copy allowed_commands.yaml template to .autoforge/
     examples_dir = Path(__file__).parent / "examples"
     allowed_commands_template = examples_dir / "project_allowed_commands.yaml"
-    allowed_commands_dest = autocoder_dir / "allowed_commands.yaml"
+    allowed_commands_dest = autoforge_dir / "allowed_commands.yaml"
     if allowed_commands_template.exists() and not allowed_commands_dest.exists():
         try:
             shutil.copy(allowed_commands_template, allowed_commands_dest)
-            copied_files.append(".autocoder/allowed_commands.yaml")
+            copied_files.append(".autoforge/allowed_commands.yaml")
         except (OSError, PermissionError) as e:
             print(f"  Warning: Could not copy allowed_commands.yaml: {e}")
 
