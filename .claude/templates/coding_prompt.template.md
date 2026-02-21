@@ -258,6 +258,12 @@ This allows you to fully test email-dependent flows without needing external ema
 
 ---
 
+## FILE HYGIENE (CRITICAL)
+
+Do NOT create artifact files in the project. This includes verification reports (`FEATURE-*-VERIFICATION.md`), session summaries (`SESSION-*-SUMMARY.md`), regression reports (`REGRESSION-TEST-*.md`), commit scripts (`COMMIT-SESSION-*.sh`), and ad-hoc test/verify scripts (`test-feature-*`, `verify-*`). All progress tracking goes in `claude-progress.txt` and git commits only.
+
+---
+
 **Remember:** One feature per session. Zero console errors. All data from real database. Leave codebase clean before ending session.
 
 ---

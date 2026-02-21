@@ -23,6 +23,11 @@ from dotenv import load_dotenv
 # Load environment variables from .env file if present
 load_dotenv()
 
+# Patch SDK message parser before any Claude client usage
+# Handles unknown message types (e.g. rate_limit_event) gracefully
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import sdk_patch  # noqa: F401, E402
+
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse

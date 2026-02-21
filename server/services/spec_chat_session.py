@@ -331,6 +331,12 @@ class SpecChatSession:
         async for msg in self.client.receive_response():
             msg_type = type(msg).__name__
 
+            # Skip system events (e.g. rate_limit_event) - CLI handles retries
+            if msg_type == "SystemMessage":
+                subtype = getattr(msg, "subtype", "")
+                logger.info("System event received: %s", subtype)
+                continue
+
             if msg_type == "AssistantMessage" and hasattr(msg, "content"):
                 # Process content blocks in the assistant message
                 for block in msg.content:

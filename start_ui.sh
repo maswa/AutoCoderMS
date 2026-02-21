@@ -80,5 +80,8 @@ fi
 echo "Installing dependencies..."
 pip install -r requirements.txt --quiet
 
+# Unset CLAUDECODE to allow nested Claude sessions from the server
+unset CLAUDECODE
+
 # Run the Python launcher
 python start_ui.py "$@"

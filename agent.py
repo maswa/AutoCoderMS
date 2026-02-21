@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import sdk_patch  # noqa: F401 - patches SDK before any client usage
 from claude_agent_sdk import ClaudeSDKClient
 
 # Fix Windows console encoding for Unicode characters (emoji, etc.)
@@ -95,6 +96,17 @@ async def run_agent_session(
                                 print(f"   Input: {input_str[:200]}...", flush=True)
                             else:
                                 print(f"   Input: {input_str}", flush=True)
+
+            # Handle SystemMessage (rate_limit_event and other system events)
+            elif msg_type == "SystemMessage":
+                subtype = getattr(msg, "subtype", "")
+                if subtype == "rate_limit_event":
+                    msg_data = getattr(msg, "data", {})
+                    retry_ms = msg_data.get("retryAfterMs") or msg_data.get("retry_after_ms")
+                    if retry_ms:
+                        print(f"\n[Rate limited - CLI will retry in {retry_ms / 1000:.0f}s...]", flush=True)
+                    else:
+                        print("\n[Rate limited - waiting for API...]", flush=True)
 
             # Handle UserMessage (tool results)
             elif msg_type == "UserMessage" and hasattr(msg, "content"):
