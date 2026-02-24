@@ -46,6 +46,7 @@ interface WebSocketState {
   progress: {
     passing: number
     in_progress: number
+    needs_human_input: number
     total: number
     percentage: number
   }
@@ -76,7 +77,7 @@ const MAX_RESEARCH_LOGS = 100 // Keep last 100 research log entries
 
 export function useProjectWebSocket(projectName: string | null) {
   const [state, setState] = useState<WebSocketState>({
-    progress: { passing: 0, in_progress: 0, total: 0, percentage: 0 },
+    progress: { passing: 0, in_progress: 0, needs_human_input: 0, total: 0, percentage: 0 },
     agentStatus: 'loading',
     logs: [],
     isConnected: false,
@@ -126,6 +127,7 @@ export function useProjectWebSocket(projectName: string | null) {
                 progress: {
                   passing: message.passing,
                   in_progress: message.in_progress,
+                  needs_human_input: message.needs_human_input ?? 0,
                   total: message.total,
                   percentage: message.percentage,
                 },
@@ -443,7 +445,7 @@ export function useProjectWebSocket(projectName: string | null) {
     // Reset state when project changes to clear stale data
     // Use 'loading' for agentStatus to show loading indicator until WebSocket provides actual status
     setState({
-      progress: { passing: 0, in_progress: 0, total: 0, percentage: 0 },
+      progress: { passing: 0, in_progress: 0, needs_human_input: 0, total: 0, percentage: 0 },
       agentStatus: 'loading',
       logs: [],
       isConnected: false,

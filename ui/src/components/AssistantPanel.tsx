@@ -6,7 +6,7 @@
  * Manages conversation state with localStorage persistence.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { X, Bot } from 'lucide-react'
 import { AssistantChat } from './AssistantChat'
 import { useConversation } from '../hooks/useConversations'
@@ -20,6 +20,10 @@ interface AssistantPanelProps {
 }
 
 const STORAGE_KEY_PREFIX = 'assistant-conversation-'
+const WIDTH_STORAGE_KEY = 'assistant-panel-width'
+const DEFAULT_WIDTH = 400
+const MIN_WIDTH = 300
+const MAX_WIDTH_VW = 90
 
 function getStoredConversationId(projectName: string): number | null {
   try {
@@ -100,6 +104,49 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
     setConversationId(id)
   }, [])
 
+  // Resizable panel width
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem(WIDTH_STORAGE_KEY)
+      if (stored) return Math.max(MIN_WIDTH, parseInt(stored, 10))
+    } catch { /* ignore */ }
+    return DEFAULT_WIDTH
+  })
+  const isResizing = useRef(false)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    const startX = e.clientX
+    const startWidth = panelWidth
+    const maxWidth = window.innerWidth * (MAX_WIDTH_VW / 100)
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return
+      const delta = startX - e.clientX
+      const newWidth = Math.min(maxWidth, Math.max(MIN_WIDTH, startWidth + delta))
+      setPanelWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      isResizing.current = false
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      // Persist width
+      setPanelWidth((w) => {
+        localStorage.setItem(WIDTH_STORAGE_KEY, String(w))
+        return w
+      })
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [panelWidth])
+
   return (
     <>
       {/* Backdrop - click to close */}
@@ -115,17 +162,25 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
       <div
         className={`
           fixed right-0 top-0 bottom-0 z-50
-          w-[400px] max-w-[90vw]
           bg-card
           border-l border-border
           transform transition-transform duration-300 ease-out
           flex flex-col shadow-xl
           ${isOpen ? 'translate-x-0' : 'translate-x-full'}
         `}
+        style={{ width: `${panelWidth}px`, maxWidth: `${MAX_WIDTH_VW}vw` }}
         role="dialog"
         aria-label="Project Assistant"
         aria-hidden={!isOpen}
       >
+        {/* Resize handle */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 group"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="absolute inset-y-0 left-0 w-0.5 bg-border group-hover:bg-primary transition-colors" />
+        </div>
+
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-primary text-primary-foreground">
           <div className="flex items-center gap-2">

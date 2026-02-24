@@ -61,7 +61,7 @@ THOUGHT_PATTERNS = [
     (re.compile(r'(?:Testing|Verifying|Running tests|Validating)\s+(.+)', re.I), 'testing'),
     (re.compile(r'(?:Error|Failed|Cannot|Unable to|Exception)\s+(.+)', re.I), 'struggling'),
     # Test results
-    (re.compile(r'(?:PASS|passed|success)', re.I), 'success'),
+    (re.compile(r'(?:PASS|passed|success)', re.I), 'testing'),
     (re.compile(r'(?:FAIL|failed|error)', re.I), 'struggling'),
 ]
 
@@ -78,6 +78,9 @@ ORCHESTRATOR_PATTERNS = {
     'testing_complete': re.compile(r'Feature #(\d+) testing (completed|failed)'),
     'all_complete': re.compile(r'All features complete'),
     'blocked_features': re.compile(r'(\d+) blocked by dependencies'),
+    'drain_start': re.compile(r'Graceful pause requested'),
+    'drain_complete': re.compile(r'All agents drained'),
+    'drain_resume': re.compile(r'Resuming from graceful pause'),
 }
 
 # Research agent patterns for progress tracking
@@ -590,6 +593,30 @@ class OrchestratorTracker:
                     'All features complete!'
                 )
 
+            # Graceful pause (drain mode) events
+            elif ORCHESTRATOR_PATTERNS['drain_start'].search(line):
+                self.state = 'draining'
+                update = self._create_update(
+                    'drain_start',
+                    'Draining active agents...'
+                )
+
+            elif ORCHESTRATOR_PATTERNS['drain_complete'].search(line):
+                self.state = 'paused'
+                self.coding_agents = 0
+                self.testing_agents = 0
+                update = self._create_update(
+                    'drain_complete',
+                    'All agents drained. Paused.'
+                )
+
+            elif ORCHESTRATOR_PATTERNS['drain_resume'].search(line):
+                self.state = 'scheduling'
+                update = self._create_update(
+                    'drain_resume',
+                    'Resuming feature scheduling'
+                )
+
             return update
 
     def _create_update(
@@ -919,15 +946,19 @@ async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Pa
     last_in_progress = -1
     last_total = -1
 
+    last_needs_human_input = -1
+
     while True:
         try:
-            passing, in_progress, total = count_passing_tests(project_dir)
+            passing, in_progress, total, needs_human_input = count_passing_tests(project_dir)
 
             # Only send if changed
-            if passing != last_passing or in_progress != last_in_progress or total != last_total:
+            if (passing != last_passing or in_progress != last_in_progress
+                    or total != last_total or needs_human_input != last_needs_human_input):
                 last_passing = passing
                 last_in_progress = in_progress
                 last_total = total
+                last_needs_human_input = needs_human_input
                 percentage = (passing / total * 100) if total > 0 else 0
 
                 await websocket.send_json({
@@ -936,6 +967,7 @@ async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Pa
                     "in_progress": in_progress,
                     "total": total,
                     "percentage": round(percentage, 1),
+                    "needs_human_input": needs_human_input,
                 })
 
             await asyncio.sleep(2)  # Poll every 2 seconds
@@ -1121,7 +1153,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
 
         # Send initial progress
         count_passing_tests = _get_count_passing_tests()
-        passing, in_progress, total = count_passing_tests(project_dir)
+        passing, in_progress, total, needs_human_input = count_passing_tests(project_dir)
         percentage = (passing / total * 100) if total > 0 else 0
         await websocket.send_json({
             "type": "progress",
@@ -1129,6 +1161,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             "in_progress": in_progress,
             "total": total,
             "percentage": round(percentage, 1),
+            "needs_human_input": needs_human_input,
         })
 
         # Keep connection alive and handle incoming messages

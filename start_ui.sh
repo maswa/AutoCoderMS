@@ -83,5 +83,14 @@ pip install -r requirements.txt --quiet
 # Unset CLAUDECODE to allow nested Claude sessions from the server
 unset CLAUDECODE
 
+# Ensure playwright-cli is available for browser automation
+if ! command -v playwright-cli &> /dev/null; then
+    echo "Installing playwright-cli for browser automation..."
+    npm install -g @playwright/cli --quiet 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "Note: Could not install playwright-cli. Install manually: npm install -g @playwright/cli"
+    fi
+fi
+
 # Run the Python launcher
 python start_ui.py "$@"

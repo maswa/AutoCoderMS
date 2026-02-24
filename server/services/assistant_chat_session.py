@@ -25,7 +25,11 @@ from .assistant_database import (
     create_conversation,
     get_messages,
 )
-from .chat_constants import ROOT_DIR
+from .chat_constants import (
+    ROOT_DIR,
+    check_rate_limit_error,
+    safe_receive_response,
+)
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -394,42 +398,46 @@ class AssistantChatSession:
         full_response = ""
 
         # Stream the response
-        async for msg in self.client.receive_response():
-            msg_type = type(msg).__name__
+        try:
+            async for msg in safe_receive_response(self.client, logger):
+                msg_type = type(msg).__name__
 
-            # Skip system events (e.g. rate_limit_event) - CLI handles retries
-            if msg_type == "SystemMessage":
-                continue
+                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                    for block in msg.content:
+                        block_type = type(block).__name__
 
-            if msg_type == "AssistantMessage" and hasattr(msg, "content"):
-                for block in msg.content:
-                    block_type = type(block).__name__
+                        if block_type == "TextBlock" and hasattr(block, "text"):
+                            text = block.text
+                            if text:
+                                full_response += text
+                                yield {"type": "text", "content": text}
 
-                    if block_type == "TextBlock" and hasattr(block, "text"):
-                        text = block.text
-                        if text:
-                            full_response += text
-                            yield {"type": "text", "content": text}
+                        elif block_type == "ToolUseBlock" and hasattr(block, "name"):
+                            tool_name = block.name
+                            tool_input = getattr(block, "input", {})
 
-                    elif block_type == "ToolUseBlock" and hasattr(block, "name"):
-                        tool_name = block.name
-                        tool_input = getattr(block, "input", {})
+                            # Intercept ask_user tool calls -> yield as question message
+                            if tool_name == "mcp__features__ask_user":
+                                questions = tool_input.get("questions", [])
+                                if questions:
+                                    yield {
+                                        "type": "question",
+                                        "questions": questions,
+                                    }
+                                    continue
 
-                        # Intercept ask_user tool calls -> yield as question message
-                        if tool_name == "mcp__features__ask_user":
-                            questions = tool_input.get("questions", [])
-                            if questions:
-                                yield {
-                                    "type": "question",
-                                    "questions": questions,
-                                }
-                                continue
-
-                        yield {
-                            "type": "tool_call",
-                            "tool": tool_name,
-                            "input": tool_input,
-                        }
+                            yield {
+                                "type": "tool_call",
+                                "tool": tool_name,
+                                "input": tool_input,
+                            }
+        except Exception as exc:
+            is_rate_limit, _ = check_rate_limit_error(exc)
+            if is_rate_limit:
+                logger.warning(f"Rate limited: {exc}")
+                yield {"type": "error", "content": "Rate limited. Please try again later."}
+                return
+            raise
 
         # Store the complete response in the database
         if full_response and self.conversation_id:

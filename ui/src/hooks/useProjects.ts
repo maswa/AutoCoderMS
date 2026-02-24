@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../lib/api'
-import type { FeatureCreate, FeatureUpdate, ModelsResponse, ProjectSettingsUpdate, ProvidersResponse, Settings, SettingsUpdate } from '../lib/types'
+import type { DevServerConfig, FeatureCreate, FeatureUpdate, ModelsResponse, ProjectSettingsUpdate, ProvidersResponse, Settings, SettingsUpdate } from '../lib/types'
 
 // ============================================================================
 // Projects
@@ -142,6 +142,18 @@ export function useUpdateFeature(projectName: string) {
   })
 }
 
+export function useResolveHumanInput(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, fields }: { featureId: number; fields: Record<string, string | boolean | string[]> }) =>
+      api.resolveHumanInput(projectName, featureId, { fields }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
 // ============================================================================
 // Agent
 // ============================================================================
@@ -200,6 +212,28 @@ export function useResumeAgent(projectName: string) {
 
   return useMutation({
     mutationFn: () => api.resumeAgent(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
+export function useGracefulPauseAgent(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.gracefulPauseAgent(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
+export function useGracefulResumeAgent(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.gracefulResumeAgent(projectName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
     },
@@ -352,6 +386,39 @@ export function useUpdateSettings() {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
       queryClient.invalidateQueries({ queryKey: ['available-models'] })
       queryClient.invalidateQueries({ queryKey: ['available-providers'] })
+    },
+  })
+}
+
+// ============================================================================
+// Dev Server Config
+// ============================================================================
+
+// Default config for placeholder (until API responds)
+const DEFAULT_DEV_SERVER_CONFIG: DevServerConfig = {
+  detected_type: null,
+  detected_command: null,
+  custom_command: null,
+  effective_command: null,
+}
+
+export function useDevServerConfig(projectName: string | null) {
+  return useQuery({
+    queryKey: ['dev-server-config', projectName],
+    queryFn: () => api.getDevServerConfig(projectName!),
+    enabled: !!projectName,
+    staleTime: 30_000,
+    placeholderData: DEFAULT_DEV_SERVER_CONFIG,
+  })
+}
+
+export function useUpdateDevServerConfig(projectName: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (customCommand: string | null) =>
+      api.updateDevServerConfig(projectName, customCommand),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dev-server-config', projectName] })
     },
   })
 }

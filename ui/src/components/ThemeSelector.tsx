@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Palette, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import type { ThemeId, ThemeOption } from '../hooks/useTheme'
 
 interface ThemeSelectorProps {
@@ -97,16 +98,20 @@ export function ThemeSelector({ themes, currentTheme, onThemeChange }: ThemeSele
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <Button
-        variant="outline"
-        size="sm"
-        title="Theme"
-        aria-label="Select theme"
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-      >
-        <Palette size={18} />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Select theme"
+            aria-expanded={isOpen}
+            aria-haspopup="true"
+          >
+            <Palette size={18} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Theme</TooltipContent>
+      </Tooltip>
 
       {/* Dropdown */}
       {isOpen && (

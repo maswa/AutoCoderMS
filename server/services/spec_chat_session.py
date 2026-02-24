@@ -19,7 +19,12 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
-from .chat_constants import ROOT_DIR, make_multimodal_message
+from .chat_constants import (
+    ROOT_DIR,
+    check_rate_limit_error,
+    make_multimodal_message,
+    safe_receive_response,
+)
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -327,135 +332,125 @@ class SpecChatSession:
         # Store paths for the completion message
         spec_path = None
 
-        # Stream the response using receive_response
-        async for msg in self.client.receive_response():
-            msg_type = type(msg).__name__
+        # Stream the response
+        try:
+            async for msg in safe_receive_response(self.client, logger):
+                msg_type = type(msg).__name__
 
-            # Skip system events (e.g. rate_limit_event) - CLI handles retries
-            if msg_type == "SystemMessage":
-                subtype = getattr(msg, "subtype", "")
-                logger.info("System event received: %s", subtype)
-                continue
+                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                    # Process content blocks in the assistant message
+                    for block in msg.content:
+                        block_type = type(block).__name__
 
-            if msg_type == "AssistantMessage" and hasattr(msg, "content"):
-                # Process content blocks in the assistant message
-                for block in msg.content:
-                    block_type = type(block).__name__
+                        if block_type == "TextBlock" and hasattr(block, "text"):
+                            # Accumulate text and yield it
+                            text = block.text
+                            if text:
+                                current_text += text
+                                yield {"type": "text", "content": text}
 
-                    if block_type == "TextBlock" and hasattr(block, "text"):
-                        # Accumulate text and yield it
-                        text = block.text
-                        if text:
-                            current_text += text
-                            yield {"type": "text", "content": text}
+                                # Store in message history
+                                self.messages.append({
+                                    "role": "assistant",
+                                    "content": text,
+                                    "timestamp": datetime.now().isoformat()
+                                })
 
-                            # Store in message history
-                            self.messages.append({
-                                "role": "assistant",
-                                "content": text,
-                                "timestamp": datetime.now().isoformat()
-                            })
+                        elif block_type == "ToolUseBlock" and hasattr(block, "name"):
+                            tool_name = block.name
+                            tool_input = getattr(block, "input", {})
+                            tool_id = getattr(block, "id", "")
 
-                    elif block_type == "ToolUseBlock" and hasattr(block, "name"):
-                        tool_name = block.name
-                        tool_input = getattr(block, "input", {})
-                        tool_id = getattr(block, "id", "")
+                            if tool_name in ("Write", "Edit"):
+                                # File being written or edited - track for verification
+                                file_path = tool_input.get("file_path", "")
 
-                        if tool_name in ("Write", "Edit"):
-                            # File being written or edited - track for verification
-                            file_path = tool_input.get("file_path", "")
-
-                            # Track app_spec.txt
-                            if "app_spec.txt" in str(file_path):
-                                pending_writes["app_spec"] = {
-                                    "tool_id": tool_id,
-                                    "path": file_path
-                                }
-                                logger.info(f"{tool_name} tool called for app_spec.txt: {file_path}")
-
-                            # Track initializer_prompt.md
-                            elif "initializer_prompt.md" in str(file_path):
-                                pending_writes["initializer"] = {
-                                    "tool_id": tool_id,
-                                    "path": file_path
-                                }
-                                logger.info(f"{tool_name} tool called for initializer_prompt.md: {file_path}")
-
-            elif msg_type == "UserMessage" and hasattr(msg, "content"):
-                # Tool results - check for write confirmations and errors
-                for block in msg.content:
-                    block_type = type(block).__name__
-                    if block_type == "ToolResultBlock":
-                        is_error = getattr(block, "is_error", False)
-                        tool_use_id = getattr(block, "tool_use_id", "")
-
-                        if is_error:
-                            content = getattr(block, "content", "Unknown error")
-                            logger.warning(f"Tool error: {content}")
-                            # Clear any pending writes that failed
-                            for key in pending_writes:
-                                pending_write = pending_writes[key]
-                                if pending_write is not None and tool_use_id == pending_write.get("tool_id"):
-                                    logger.error(f"{key} write failed: {content}")
-                                    pending_writes[key] = None
-                        else:
-                            # Tool succeeded - check which file was written
-
-                            # Check app_spec.txt
-                            if pending_writes["app_spec"] and tool_use_id == pending_writes["app_spec"].get("tool_id"):
-                                file_path = pending_writes["app_spec"]["path"]
-                                full_path = Path(file_path) if Path(file_path).is_absolute() else self.project_dir / file_path
-                                if full_path.exists():
-                                    logger.info(f"app_spec.txt verified at: {full_path}")
-                                    files_written["app_spec"] = True
-                                    spec_path = file_path
-
-                                    # Notify about file write (but NOT completion yet)
-                                    yield {
-                                        "type": "file_written",
-                                        "path": str(file_path)
+                                # Track app_spec.txt
+                                if "app_spec.txt" in str(file_path):
+                                    pending_writes["app_spec"] = {
+                                        "tool_id": tool_id,
+                                        "path": file_path
                                     }
-                                else:
-                                    logger.error(f"app_spec.txt not found after write: {full_path}")
-                                pending_writes["app_spec"] = None
+                                    logger.info(f"{tool_name} tool called for app_spec.txt: {file_path}")
 
-                            # Check initializer_prompt.md
-                            if pending_writes["initializer"] and tool_use_id == pending_writes["initializer"].get("tool_id"):
-                                file_path = pending_writes["initializer"]["path"]
-                                full_path = Path(file_path) if Path(file_path).is_absolute() else self.project_dir / file_path
-                                if full_path.exists():
-                                    logger.info(f"initializer_prompt.md verified at: {full_path}")
-                                    files_written["initializer"] = True
-
-                                    # Notify about file write
-                                    yield {
-                                        "type": "file_written",
-                                        "path": str(file_path)
+                                # Track initializer_prompt.md
+                                elif "initializer_prompt.md" in str(file_path):
+                                    pending_writes["initializer"] = {
+                                        "tool_id": tool_id,
+                                        "path": file_path
                                     }
-                                else:
-                                    logger.error(f"initializer_prompt.md not found after write: {full_path}")
-                                pending_writes["initializer"] = None
+                                    logger.info(f"{tool_name} tool called for initializer_prompt.md: {file_path}")
 
-                            # Check if BOTH files are now written - only then signal completion
-                            if files_written["app_spec"] and files_written["initializer"]:
-                                logger.info("Both app_spec.txt and initializer_prompt.md verified - signaling completion")
-                                self.complete = True
+                elif msg_type == "UserMessage" and hasattr(msg, "content"):
+                    # Tool results - check for write confirmations and errors
+                    for block in msg.content:
+                        block_type = type(block).__name__
+                        if block_type == "ToolResultBlock":
+                            is_error = getattr(block, "is_error", False)
+                            tool_use_id = getattr(block, "tool_use_id", "")
 
-                                # Delete CLAUDE.md - it was only needed during spec creation
-                                # to pass the long system prompt to the SDK. Leaving it would
-                                # confuse the initializer/coding agents with spec creation instructions.
-                                claude_md_path = self.project_dir / "CLAUDE.md"
-                                if claude_md_path.exists():
-                                    try:
-                                        claude_md_path.unlink()
-                                        logger.info("Deleted CLAUDE.md after spec creation")
-                                    except Exception as e:
-                                        logger.warning(f"Could not delete CLAUDE.md: {e}")
+                            if is_error:
+                                content = getattr(block, "content", "Unknown error")
+                                logger.warning(f"Tool error: {content}")
+                                # Clear any pending writes that failed
+                                for key in pending_writes:
+                                    pending_write = pending_writes[key]
+                                    if pending_write is not None and tool_use_id == pending_write.get("tool_id"):
+                                        logger.error(f"{key} write failed: {content}")
+                                        pending_writes[key] = None
+                            else:
+                                # Tool succeeded - check which file was written
 
-                                yield {
-                                    "type": "spec_complete",
-                                    "path": str(spec_path)
-                                }
+                                # Check app_spec.txt
+                                if pending_writes["app_spec"] and tool_use_id == pending_writes["app_spec"].get("tool_id"):
+                                    file_path = pending_writes["app_spec"]["path"]
+                                    full_path = Path(file_path) if Path(file_path).is_absolute() else self.project_dir / file_path
+                                    if full_path.exists():
+                                        logger.info(f"app_spec.txt verified at: {full_path}")
+                                        files_written["app_spec"] = True
+                                        spec_path = file_path
+
+                                        # Notify about file write (but NOT completion yet)
+                                        yield {
+                                            "type": "file_written",
+                                            "path": str(file_path)
+                                        }
+                                    else:
+                                        logger.error(f"app_spec.txt not found after write: {full_path}")
+                                    pending_writes["app_spec"] = None
+
+                                # Check initializer_prompt.md
+                                if pending_writes["initializer"] and tool_use_id == pending_writes["initializer"].get("tool_id"):
+                                    file_path = pending_writes["initializer"]["path"]
+                                    full_path = Path(file_path) if Path(file_path).is_absolute() else self.project_dir / file_path
+                                    if full_path.exists():
+                                        logger.info(f"initializer_prompt.md verified at: {full_path}")
+                                        files_written["initializer"] = True
+
+                                        # Notify about file write
+                                        yield {
+                                            "type": "file_written",
+                                            "path": str(file_path)
+                                        }
+                                    else:
+                                        logger.error(f"initializer_prompt.md not found after write: {full_path}")
+                                    pending_writes["initializer"] = None
+
+                                # Check if BOTH files are now written - only then signal completion
+                                if files_written["app_spec"] and files_written["initializer"]:
+                                    logger.info("Both app_spec.txt and initializer_prompt.md verified - signaling completion")
+                                    self.complete = True
+                                    yield {
+                                        "type": "spec_complete",
+                                        "path": str(spec_path)
+                                    }
+        except Exception as exc:
+            is_rate_limit, _ = check_rate_limit_error(exc)
+            if is_rate_limit:
+                logger.warning(f"Rate limited: {exc}")
+                yield {"type": "error", "content": "Rate limited. Please try again later."}
+                return
+            raise
 
     def _build_research_preamble(self) -> str | None:
         """

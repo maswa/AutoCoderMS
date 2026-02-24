@@ -22,7 +22,12 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
 
 from ..schemas import ImageAttachment
-from .chat_constants import ROOT_DIR, make_multimodal_message
+from .chat_constants import (
+    ROOT_DIR,
+    check_rate_limit_error,
+    make_multimodal_message,
+    safe_receive_response,
+)
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -299,27 +304,31 @@ class ExpandChatSession:
             await self.client.query(message)
 
         # Stream the response
-        async for msg in self.client.receive_response():
-            msg_type = type(msg).__name__
+        try:
+            async for msg in safe_receive_response(self.client, logger):
+                msg_type = type(msg).__name__
 
-            # Skip system events (e.g. rate_limit_event) - CLI handles retries
-            if msg_type == "SystemMessage":
-                continue
+                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                    for block in msg.content:
+                        block_type = type(block).__name__
 
-            if msg_type == "AssistantMessage" and hasattr(msg, "content"):
-                for block in msg.content:
-                    block_type = type(block).__name__
+                        if block_type == "TextBlock" and hasattr(block, "text"):
+                            text = block.text
+                            if text:
+                                yield {"type": "text", "content": text}
 
-                    if block_type == "TextBlock" and hasattr(block, "text"):
-                        text = block.text
-                        if text:
-                            yield {"type": "text", "content": text}
-
-                            self.messages.append({
-                                "role": "assistant",
-                                "content": text,
-                                "timestamp": datetime.now().isoformat()
-                            })
+                                self.messages.append({
+                                    "role": "assistant",
+                                    "content": text,
+                                    "timestamp": datetime.now().isoformat()
+                                })
+        except Exception as exc:
+            is_rate_limit, _ = check_rate_limit_error(exc)
+            if is_rate_limit:
+                logger.warning(f"Rate limited: {exc}")
+                yield {"type": "error", "content": "Rate limited. Please try again later."}
+                return
+            raise
 
     def get_features_created(self) -> int:
         """Get the total number of features created in this session."""
